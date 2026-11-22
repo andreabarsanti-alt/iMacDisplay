@@ -47,6 +47,16 @@ removes the pairing key and the signing identity, and restores the original
 network settings from the backup (asks for your password).
 Keep parts with `--keep-network`, `--keep-permissions`, `--keep-key`, `--keep-identity`.
 
+## A second MacBook (same iMac)
+
+1. On the first MacBook: `./export-pairing.sh` (in the MacBook package) puts
+   `RemoteMirror-pairing.key` on the Desktop.
+2. Copy it to the other MacBook next to its `install.sh` (or into Downloads / Desktop).
+3. Run `./install.sh` there: it imports the key and deletes the file. Nothing to do on
+   the iMac. Only one MacBook on the cable at a time (both use 10.77.0.1).
+
+The MacBook app is universal (Apple silicon and Intel).
+
 ## Another iMac
 
 Use the same `RemoteMirror-iMac.zip` and the MacBook's pairing file

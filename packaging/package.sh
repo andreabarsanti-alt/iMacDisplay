@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the two install packages on the MacBook:
-#   dist/RemoteMirror-MacBook.zip   (arm64 menu bar app + install/uninstall)
+#   dist/RemoteMirror-MacBook.zip   (universal menu bar app + install/uninstall/export-pairing)
 #   dist/RemoteMirror-iMac.zip      (x86_64 waiting app + install/uninstall)
 # The target Macs need no developer tools: the installers sign locally with codesign.
 set -euo pipefail
@@ -34,6 +34,7 @@ pkg() { # role dir binary id uielement installer
   codesign -f -s - "$dir/RemoteMirror.app" 2>/dev/null   # ad-hoc; re-signed locally at install
   cp packaging/common.sh packaging/uninstall.sh scripts/setup/link.sh scripts/setup/signing-cert.sh "$dir/"
   cp "packaging/$inst" "$dir/install.sh"
+  [ "$role" = macbook ] && cp packaging/export-pairing.sh "$dir/"
   echo "$role" > "$dir/ROLE"
   chmod +x "$dir"/*.sh
   cat > "$dir/README.txt" <<TXT
@@ -48,13 +49,17 @@ Desktop. Copy that file to the iMac (AirDrop/USB) next to the iMac installer,
 then install on the iMac. The file is deleted after import.
 TXT
   (cd dist && ditto -c -k --keepParent "$2" "$2.zip")
+  rm -f dist/RemoteMirrorHostApp-universal
   echo "built dist/$2.zip"
 }
 
 swift build -q -c release --arch arm64 --product RemoteMirrorHostApp
+swift build -q -c release --arch x86_64 --product RemoteMirrorHostApp
 swift build -q -c release --arch x86_64 --product RemoteMirrorClient
 ARM=$(swift build -c release --arch arm64 --show-bin-path)
 X86=$(swift build -c release --arch x86_64 --show-bin-path)
-pkg macbook RemoteMirror-MacBook "$ARM/RemoteMirrorHostApp" local.remotemirror.host 1 install-macbook.sh
+# MacBook app: universal (Apple silicon + Intel MacBooks).
+lipo -create "$ARM/RemoteMirrorHostApp" "$X86/RemoteMirrorHostApp" -output dist/RemoteMirrorHostApp-universal
+pkg macbook RemoteMirror-MacBook dist/RemoteMirrorHostApp-universal local.remotemirror.host 1 install-macbook.sh
 pkg imac RemoteMirror-iMac "$X86/RemoteMirrorClient" local.remotemirror.client 0 install-imac.sh
 file dist/RemoteMirror-MacBook/RemoteMirror.app/Contents/MacOS/RemoteMirror dist/RemoteMirror-iMac/RemoteMirror.app/Contents/MacOS/RemoteMirror | sed 's/.*RemoteMirror-\([A-Za-z]*\).*: /\1: /'

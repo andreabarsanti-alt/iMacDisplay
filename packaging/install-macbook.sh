@@ -5,12 +5,15 @@
 #   ./install.sh --skip-network       don't touch the network settings
 #   ./install.sh --push-to USER@10.77.0.2
 #                                     also copy the pairing key to the iMac over SSH
+#   ./install.sh --pairing-file PATH  use an existing pairing key (e.g. a second MacBook
+#                                     for the same iMac; made with ./export-pairing.sh).
+#                                     Found automatically next to this script, in
+#                                     ~/Downloads or on the Desktop.
 #
 # Steps: cable IP 10.77.0.1 (original settings backed up), local signing identity,
 # RemoteMirror.app in ~/Applications, pairing key, permissions. Undo: ./uninstall.sh
 source "$(dirname "$0")/common.sh"
 
-[ "$(uname -m)" = arm64 ] || die "this package is for Apple silicon MacBooks (found $(uname -m))"
 say "Installing RemoteMirror for the MacBook"
 
 if has_flag --skip-network "$@"; then warn "network: skipped (--skip-network)"
@@ -24,17 +27,30 @@ install_app "$HERE/RemoteMirror.app" RemoteMirror local.remotemirror.host
 record app; record identity
 
 say "Pairing key"
-if [ -f "$STATE/psk" ]; then ok "existing key kept (fingerprint $(key_fingerprint))"
-else store_key "$(/usr/bin/openssl rand -hex 32)"; ok "new key (fingerprint $(key_fingerprint))"; record key; fi
+IMPORT=$(flag_value --pairing-file "$@")
+if [ -z "$IMPORT" ] && [ ! -f "$STATE/psk" ]; then
+  for f in "$HERE/RemoteMirror-pairing.key" "$HOME/Downloads/RemoteMirror-pairing.key" "$HOME/Desktop/RemoteMirror-pairing.key"; do
+    [ -f "$f" ] && { IMPORT=$f; break; }
+  done
+fi
+NEWKEY=0
+if [ -n "$IMPORT" ]; then
+  K=$(tr -d '[:space:]' < "$IMPORT")
+  [[ "$K" =~ ^[0-9a-f]{64}$ ]] || die "$IMPORT is not a RemoteMirror pairing file"
+  store_key "$K"; record key; rm -f "$IMPORT"
+  ok "key imported (fingerprint $(key_fingerprint)): this MacBook pairs with the same iMac; pairing file deleted"
+elif [ -f "$STATE/psk" ]; then ok "existing key kept (fingerprint $(key_fingerprint))"
+else store_key "$(/usr/bin/openssl rand -hex 32)"; ok "new key (fingerprint $(key_fingerprint))"; record key; NEWKEY=1; fi
 PAIR="$HOME/Desktop/RemoteMirror-pairing.key"
-cp "$STATE/psk" "$PAIR"; chmod 600 "$PAIR"
+# Only a brand-new key has to go to the iMac; an imported or existing one is already there.
+if [ $NEWKEY = 1 ] || has_flag --export-pairing "$@"; then cp "$STATE/psk" "$PAIR"; chmod 600 "$PAIR"; else PAIR=""; fi
 TARGET=$(flag_value --push-to "$@")
 if [ -n "$TARGET" ]; then
   if ssh -o BatchMode=yes -o ConnectTimeout=5 "$TARGET" 'mkdir -p ~/.imacdisplay && chmod 700 ~/.imacdisplay && umask 077 && cat > ~/.imacdisplay/psk && chmod 600 ~/.imacdisplay/psk' < "$STATE/psk"; then
-    ok "key copied to $TARGET"; rm -f "$PAIR"
+    ok "key copied to $TARGET"; [ -n "$PAIR" ] && rm -f "$PAIR"
   else warn "could not reach $TARGET over SSH; use the pairing file instead"; fi
 fi
-[ -f "$PAIR" ] && { ok "pairing file: $PAIR"; warn "copy it to the iMac (AirDrop/USB) and run the iMac installer; it is deleted there after import. Treat it like a password."; }
+[ -n "$PAIR" ] && [ -f "$PAIR" ] && { ok "pairing file: $PAIR"; warn "copy it to the iMac (AirDrop/USB) and run the iMac installer; it is deleted there after import. Treat it like a password."; }
 
 say "Permissions"
 if has_flag --skip-permissions "$@"; then STATUS=$(run_app "$APPS/RemoteMirror.app" --check-permissions); else
