@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M9 done (tag `m9`). M7 feel test passed (human: "Feels great", 2026-11-22). M9 done (tag `m9`): defaults now HEVC 60 fps 12 Mbps (see docs/tuning.md). Human checkpoint: final judgement on latency and image quality. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M9 done (tag `m9`). M7 feel test passed (human: "Feels great", 2026-11-22). M9 done (tag `m9`): defaults now HEVC 60 fps 12 Mbps (see docs/tuning.md). Human checkpoint passed: "it seems very cool" (2026-11-22). Next: M10 host menu bar app. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
