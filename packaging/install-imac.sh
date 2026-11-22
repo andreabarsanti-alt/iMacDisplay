@@ -14,6 +14,15 @@ source "$(dirname "$0")/common.sh"
 [ "$(uname -m)" = x86_64 ] || warn "this package is built for Intel iMacs (found $(uname -m)); it will run under Rosetta"
 say "Installing RemoteMirror for the iMac"
 
+# Find the pairing key first, so a missing file doesn't leave a half-done install.
+PAIR=$(flag_value --pairing-file "$@")
+if [ -z "$PAIR" ]; then
+  for f in "$HERE/RemoteMirror-pairing.key" "$HOME/Downloads/RemoteMirror-pairing.key" "$HOME/Desktop/RemoteMirror-pairing.key"; do
+    [ -f "$f" ] && { PAIR=$f; break; }
+  done
+fi
+[ -n "$PAIR" ] || [ -f "$STATE/psk" ] || die "no pairing file found: copy RemoteMirror-pairing.key (from the MacBook installer) next to this script, or pass --pairing-file PATH"
+
 if has_flag --skip-network "$@"; then warn "network: skipped (--skip-network)"
 else
   say "Network: cable link 10.77.0.2 (needs your password)"
@@ -21,12 +30,6 @@ else
 fi
 
 say "Pairing key"
-PAIR=$(flag_value --pairing-file "$@")
-if [ -z "$PAIR" ]; then
-  for f in "$HERE/RemoteMirror-pairing.key" "$HOME/Downloads/RemoteMirror-pairing.key" "$HOME/Desktop/RemoteMirror-pairing.key"; do
-    [ -f "$f" ] && { PAIR=$f; break; }
-  done
-fi
 if [ -n "$PAIR" ]; then
   K=$(tr -d '[:space:]' < "$PAIR")
   [[ "$K" =~ ^[0-9a-f]{64}$ ]] || die "$PAIR is not a RemoteMirror pairing file"
@@ -34,7 +37,7 @@ if [ -n "$PAIR" ]; then
   has_flag --keep-pairing-file "$@" || rm -f "$PAIR"
   ok "key imported (fingerprint $(key_fingerprint)); pairing file deleted"
 elif [ -f "$STATE/psk" ]; then ok "existing key kept (fingerprint $(key_fingerprint))"
-else die "no pairing file found; run the MacBook installer first and copy RemoteMirror-pairing.key here"; fi
+fi
 
 say "App"
 install_app "$HERE/RemoteMirror.app" RemoteMirror local.remotemirror.client
