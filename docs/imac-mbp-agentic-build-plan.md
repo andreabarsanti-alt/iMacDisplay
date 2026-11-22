@@ -101,7 +101,7 @@ The agent works through milestones in order, runs the acceptance test for each, 
 | M10 | Host menu bar app (see "Host app") | State machine unit tests; 20 start/stop cycles leave no process, port or capture session behind; Stop completes in < 1 s; permission-denied and cable-unplugged paths end in a clear error state |
 | M11 | Client waiting/status UI on the iMac | Client idles with "Waiting for MacBook"; goes full-screen when sharing starts and returns to idle when it ends, with no manual step on the iMac |
 | M12 | Packaged install / uninstall for both Macs | `install-host` (MacBook) and `install-client` (iMac) set up everything done by hand so far: link IP + service order (with backup), SSH key, pre-shared key, local signing identity, signed apps, permission panes opened and verified. `uninstall-*` restores the saved network state and removes keys, identity, apps and files. Test: install, run M3/M5 tests, uninstall, check the original state is back; repeatable on a second iMac |
-| M13 (optional) | Lid closed (clamshell) | With an HDMI dummy plug + power, the MacBook keeps running lid-closed; the host captures that display at a 16:9 mode matching the iMac (no letterboxing). Alternative: virtual display via private API |
+| M13 (roadmap) | Lid closed (clamshell) with an HDMI dummy plug | See `docs/ROADMAP.md`: share the dummy display at 2560x1440 HiDPI (no bars on the iMac 5K), lid close not treated as off while plugged in, 30 min lid-closed session without sleep, latency within 10% of M9 |
 
 **Agent rules**
 - Never run sudo or change system settings, firewall, or signing configuration; ask the human instead.
