@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M5 done (tag `m5`). Next: M6 mouse/scroll.
+**Current milestone:** M6 done (tag `m6`). Next: M7 cursor overlay, shortcut capture, escape hatch test; then human feel test.
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- M6 (`scripts/m6-test.sh`, real screen capture): 25 events; 7 clicks (5 left, 1 right, 1 double) all on target, max error 0.00 pt; 5 scroll events, total dy -150.
 - M5 (`scripts/m5-test.sh`, run twice): 60 key events incl. Shift, field = "Hello World 2026 ciao Mondo" exactly. Dead man's switch (`--dead-man 1`): injection stopped, 0 events, field empty. Escape hatch Ctrl-Option-Cmd-Q implemented on the client (tested in M7).
 - M4 (`scripts/m4-test.sh`, 60 s, 3024x1964 H.264 30 Mbps): 1764 samples, 0 marker misses; latency min 25.1 / **median 49.9 / p95 56.5** / max 167.0 ms (draw -> capture -> encode -> link -> decode -> display enqueue; excludes iMac panel scan-out, ~8 ms avg). 29.5 fps, decode 3.4 ms.
 - M3 (`scripts/m3-test.sh`): real screen 30 s → 29.5 fps displayed, HW decode 1.7 ms, 0 errors; client frame vs host screenshot similarity 0.974; mutual kill on client exit; wrong key, wrong source address (10.77.0.1) and plain TCP all rejected.

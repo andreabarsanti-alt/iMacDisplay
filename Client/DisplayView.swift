@@ -24,6 +24,7 @@ final class DisplayWindow {
         window.title = "RemoteMirror"
         window.backgroundColor = .black
         window.isReleasedWhenClosed = false
+        window.acceptsMouseMovedEvents = true
         if !windowed { window.level = .mainMenu + 1 }
         let view = InputView(frame: NSRect(origin: .zero, size: rect.size))
         inputView = view
@@ -49,6 +50,8 @@ final class DisplayWindow {
     /// Enqueues a decoded frame for immediate display.
     func display(_ pb: CVPixelBuffer) {
         lock.lock(); lastFrame = pb; lock.unlock()
+        let size = CGSize(width: CVPixelBufferGetWidth(pb), height: CVPixelBufferGetHeight(pb))
+        if inputView.videoSize != size { inputView.videoSize = size }
         var fmt: CMVideoFormatDescription?
         CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pb, formatDescriptionOut: &fmt)
         guard let fmt else { return }

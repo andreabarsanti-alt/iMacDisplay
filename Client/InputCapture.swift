@@ -35,6 +35,70 @@ final class InputView: NSView {
         onEvent?(InputEvent(kind: .flagsChanged, flags: flags(e), code: e.keyCode))
     }
 
+    // MARK: Mouse
+
+    /// Size of the decoded video in pixels; set by the display when frames arrive.
+    var videoSize = CGSize(width: 16, height: 10)
+
+    /// The aspect-fit rect the video occupies inside this view (view coordinates).
+    var videoRect: CGRect {
+        let b = bounds
+        guard videoSize.width > 0, videoSize.height > 0, b.width > 0, b.height > 0 else { return b }
+        let scale = min(b.width / videoSize.width, b.height / videoSize.height)
+        let w = videoSize.width * scale, h = videoSize.height * scale
+        return CGRect(x: b.midX - w / 2, y: b.midY - h / 2, width: w, height: h)
+    }
+
+    /// View point -> normalized 0...1 in the video, origin top-left (clamped).
+    func normalize(_ p: CGPoint) -> (Float32, Float32) {
+        let r = videoRect
+        let x = (p.x - r.minX) / r.width
+        let y = 1 - (p.y - r.minY) / r.height        // AppKit views are bottom-up
+        return (Float32(min(max(x, 0), 1)), Float32(min(max(y, 0), 1)))
+    }
+
+    /// Normalized video coordinates -> view point (inverse of `normalize`).
+    func viewPoint(nx: Double, ny: Double) -> CGPoint {
+        let r = videoRect
+        return CGPoint(x: r.minX + nx * r.width, y: r.minY + (1 - ny) * r.height)
+    }
+
+    /// `code` packs the button number (low byte) and click count (high byte).
+    static func mouseCode(button: Int, clicks: Int) -> UInt16 {
+        UInt16(min(max(button, 0), 255)) | UInt16(min(max(clicks, 0), 255)) << 8
+    }
+
+    private func mouse(_ e: NSEvent, _ kind: InputKind) {
+        let (x, y) = normalize(convert(e.locationInWindow, from: nil))
+        onEvent?(InputEvent(kind: kind, flags: flags(e), code: Self.mouseCode(button: e.buttonNumber, clicks: e.clickCount),
+                            x: x, y: y))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseMoved(with e: NSEvent) { mouse(e, .mouseMove) }
+    override func mouseDragged(with e: NSEvent) { mouse(e, .mouseMove) }
+    override func rightMouseDragged(with e: NSEvent) { mouse(e, .mouseMove) }
+    override func otherMouseDragged(with e: NSEvent) { mouse(e, .mouseMove) }
+    override func mouseDown(with e: NSEvent) { mouse(e, .mouseDown) }
+    override func mouseUp(with e: NSEvent) { mouse(e, .mouseUp) }
+    override func rightMouseDown(with e: NSEvent) { mouse(e, .mouseDown) }
+    override func rightMouseUp(with e: NSEvent) { mouse(e, .mouseUp) }
+    override func otherMouseDown(with e: NSEvent) { mouse(e, .mouseDown) }
+    override func otherMouseUp(with e: NSEvent) { mouse(e, .mouseUp) }
+
+    /// Scroll: dx/dy carry the deltas; code 1 = precise (pixel) deltas, 0 = line deltas.
+    override func scrollWheel(with e: NSEvent) {
+        let (x, y) = normalize(convert(e.locationInWindow, from: nil))
+        onEvent?(InputEvent(kind: .scroll, flags: flags(e), code: e.hasPreciseScrollingDeltas ? 1 : 0,
+                            x: x, y: y, dx: Float32(e.scrollingDeltaX), dy: Float32(e.scrollingDeltaY)))
+    }
+
     /// Cmd-key combinations arrive here (menu key equivalents) instead of keyDown.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
         guard e.type == .keyDown else { return false }

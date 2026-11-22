@@ -15,6 +15,7 @@ import Shared
 //   --marker <x,y,pitch>    read the M4 latency marker (cell centres in frame pixels) and echo it
 //   --type-text <s>         after connecting, type this text on the host (M5 test)
 //   --no-input              don't open the input connection
+//   --mouse-script <spec>   click/scroll host targets "nx,ny;..." (M6 test)
 //   --host <ip> --key <path>
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -124,7 +125,45 @@ display.inputView.onEscape = {
     client.disconnect(.escapeHatch) { DispatchQueue.main.async { finish(code: 0, reason: "escape hatch") } }
 }
 inputClient?.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: "input: \(reason)") } }
+/// M6: scripted clicks through the same view <-> video mapping as real mouse events.
+func runMouseScript(_ spec: String) {
+    let pts = spec.split(separator: ";").compactMap { pair -> (Double, Double)? in
+        let p = pair.split(separator: ",").compactMap { Double($0) }
+        return p.count == 2 ? (p[0], p[1]) : nil
+    }
+    let v = display.inputView!
+    var steps: [InputEvent] = []
+    func at(_ i: Int) -> (Float32, Float32) { v.normalize(v.viewPoint(nx: pts[i].0, ny: pts[i].1)) }
+    func click(_ i: Int, button: Int = 0, clicks: Int = 1) {
+        let (x, y) = at(i)
+        steps.append(InputEvent(kind: .mouseDown, code: InputView.mouseCode(button: button, clicks: clicks), x: x, y: y))
+        steps.append(InputEvent(kind: .mouseUp, code: InputView.mouseCode(button: button, clicks: clicks), x: x, y: y))
+    }
+    for i in pts.indices {
+        let (x, y) = at(i)
+        steps.append(InputEvent(kind: .mouseMove, x: x, y: y))
+        click(i)
+        if i == 1 { click(i, clicks: 2) }          // double click
+        if i == 0 { click(i, button: 1) }          // right click
+    }
+    if pts.count > 2 {
+        let (x, y) = at(2)
+        steps.append(InputEvent(kind: .mouseMove, x: x, y: y))
+        for _ in 0..<5 { steps.append(InputEvent(kind: .scroll, code: 1, x: x, y: y, dx: 0, dy: -30)) }
+    }
+    for (i, e) in steps.enumerated() {
+        // Double-click halves must be close together; everything else is spaced out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.08) { inputClient?.send(e) }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Double(steps.count) * 0.08 + 0.2) {
+        print("{\"event\":\"mouse_script\",\"events\":\(steps.count)}")
+    }
+}
+
 inputClient?.onReady = {
+    if let spec = str("--mouse-script") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { runMouseScript(spec) }
+    }
     guard let text = str("--type-text") else { return }
     guard let events = KeyScript.events(for: text) else { print("FAIL: unsupported character in --type-text"); return }
     // Give the host's test window a moment to take focus, then type at ~30 keys/s.

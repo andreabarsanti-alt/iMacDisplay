@@ -27,6 +27,8 @@ import Shared
 //     --dead-man <s>  stop injecting input after N seconds (tests)
 //     --input-test    show a focused text field; print its content on exit
 //     --expect-text <s>  with --input-test: PASS only if the field equals this
+//     --mouse-test    show click targets; check the client's scripted clicks/scroll on exit
+//     --mouse-spec-out <path>  write target positions for the client
 //     --marker-spec-out <path>  write the marker position for the client
 //     --allow-peer <ip>  override the pinned client address (tests only)
 
@@ -199,6 +201,7 @@ if flag("--serve") {
     }
     inputServer.onInput = { e in if !viewOnly { injector.inject(e) } }
     let inputTest = flag("--input-test") ? InputTestWindow() : nil
+    let mouseTest = flag("--mouse-test") ? MouseTestWindow() : nil
     let latency = LatencyStats()
     server.onLatencyEcho = { v in
         guard let t = marker?.drawTime(v) else { return }
@@ -250,6 +253,12 @@ if flag("--serve") {
                     }
                     inputTest.close()
                 }
+                if let mouseTest {
+                    let r = mouseTest.evaluate()
+                    print(r.json)
+                    if r.failures.isEmpty { print("PASS") } else { r.failures.forEach { print("FAIL: \($0)") }; code = 1 }
+                    mouseTest.close()
+                }
                 exit(code)
             }
         }
@@ -288,6 +297,12 @@ if flag("--serve") {
             try server.start()
             try inputServer.start()
             inputTest?.show()
+            if let mouseTest {
+                mouseTest.show()
+                if let i = args.firstIndex(of: "--mouse-spec-out"), i + 1 < args.count {
+                    try mouseTest.spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+                }
+            }
         } catch {
             print("FAIL: \(error)"); exit(1)
         }
