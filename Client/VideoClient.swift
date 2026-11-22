@@ -67,6 +67,7 @@ final class VideoClient {
     }
 
     func requestKeyframe() { conn?.send(.keyframeRequest) }
+    func sendLatencyEcho(_ v: UInt32) { conn?.send(.latencyEcho(marker: v)) }
 
     func disconnect(_ reason: ByeReason, then: (() -> Void)? = nil) {
         guard let c = conn else { then?(); return }

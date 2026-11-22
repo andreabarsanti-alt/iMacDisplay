@@ -110,3 +110,23 @@ private func bytes(_ hex: String) -> Data {
         #expect(throws: WireError.invalidValue("bool")) { try Message.decode(type: 21, payload: p) }
     }
 }
+
+@Suite struct MarkerCoding {
+    @Test(arguments: [UInt32(0), 1, 0x00ab_cdef, 0x00ff_ffff, 123_456])
+    func roundTrip(_ v: UInt32) {
+        let bits = Marker.bits(v)
+        #expect(bits.count == Marker.cells)
+        #expect(Marker.decode { bits[$0] ? 235 : 20 } == v)
+    }
+
+    @Test func detectsCorruption() {
+        var bits = Marker.bits(4242)
+        bits[5].toggle()
+        #expect(Marker.decode { bits[$0] ? 255 : 0 } == nil)
+    }
+
+    @Test func allBlackIsRejected() {
+        // A blank or missing marker must not decode as a value.
+        #expect(Marker.decode { _ in 0 } == nil)
+    }
+}

@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M3 done (tag `m3`). Human checkpoint: look at the iMac mirror. Next: M4 latency harness. Accessibility (needed for M5) still `denied`.
+**Current milestone:** M4 done (tag `m4`). Next: M5 keyboard input, blocked on Accessibility for Terminal (still `denied`).
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- M4 (`scripts/m4-test.sh`, 60 s, 3024x1964 H.264 30 Mbps): 1764 samples, 0 marker misses; latency min 25.1 / **median 49.9 / p95 56.5** / max 167.0 ms (draw -> capture -> encode -> link -> decode -> display enqueue; excludes iMac panel scan-out, ~8 ms avg). 29.5 fps, decode 3.4 ms.
 - M3 (`scripts/m3-test.sh`): real screen 30 s → 29.5 fps displayed, HW decode 1.7 ms, 0 errors; client frame vs host screenshot similarity 0.974; mutual kill on client exit; wrong key, wrong source address (10.77.0.1) and plain TCP all rejected.
 - M2 (`RemoteMirrorHost --capture-test`): 28.9 fps, HW H.264 1512x982, encode 4.8 ms avg. `--encoder-test` (synthetic) passes for H.264 and HEVC.
 - M1: `scripts/test.sh` 16/16 pass on arm64 and x86_64; cross-machine check `RemoteMirrorHost --emit-vectors | ssh imac RemoteMirrorClient --verify-vectors` → PASS (10 vectors); tampered input rejected.
@@ -49,6 +50,9 @@ All pass except link speed:
 
 - **Quality (human feedback after M3):** point-size capture (1512x982) upscaled ~3x on the iMac 5K looked soft and low-contrast. Now: native Retina pixels (3024x1964), full-range 4:2:0, sRGB/BT.709 tagged end to end, 30 Mbps default. Human: "much better", delay "very short". iMac decode ~3.5 ms/frame.
 - Cursor is included in the video (`showsCursor`) until the client overlay in M7; `--no-cursor` turns it off.
+
+- **Latency harness without clock sync:** the client echoes the marker value it decoded; the host subtracts its own draw time, so no cross-machine clock is needed.
+- **Lid closed (human question):** not supported now (sleep + no display to capture). Candidate extra milestone after M11: HDMI dummy plug + clamshell mode, capturing that display at a 16:9 mode matching the iMac; alternative is a virtual display via private API.
 
 ## Blockers
 

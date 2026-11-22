@@ -27,6 +27,7 @@ final class VideoServer {
     var onKeyframeRequest: (() -> Void)?
     var onRejected: ((String) -> Void)?
     var onByeFromClient: ((ByeReason) -> Void)?
+    var onLatencyEcho: ((UInt32) -> Void)?
 
     init(config: Config) { self.config = config }
 
@@ -100,6 +101,7 @@ final class VideoServer {
             }
             switch m {
             case .keyframeRequest: self.onKeyframeRequest?()
+            case let .latencyEcho(v): self.onLatencyEcho?(v)
             case let .bye(r):
                 self.onByeFromClient?(r)
                 c.close("client said bye: \(r)")

@@ -22,6 +22,8 @@ import Shared
 //     --pattern       also show the animated test-pattern window
 //     --points        capture at point size instead of native Retina pixels
 //     --no-cursor     leave the cursor out of the video (client overlay, M7)
+//     --latency       show the M4 latency marker; print median/p95 on exit
+//     --marker-spec-out <path>  write the marker position for the client
 //     --allow-peer <ip>  override the pinned client address (tests only)
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -180,6 +182,12 @@ if flag("--serve") {
     var width: Int32 = 0, height: Int32 = 0
     var needKeyframe = false
     let pattern = flag("--pattern") ? TestPatternWindow() : nil
+    let marker = flag("--latency") ? LatencyMarkerWindow() : nil
+    let latency = LatencyStats()
+    server.onLatencyEcho = { v in
+        guard let t = marker?.drawTime(v) else { return }
+        latency.add(Double(DispatchTime.now().uptimeNanoseconds - t) / 1e6)
+    }
 
     func onEncoded(_ out: VideoEncoder.Output) {
         let frame = VideoFrame(ptsNanos: out.ptsNanos, flags: out.isKeyframe ? VideoFrame.keyframeFlag : 0,
@@ -206,6 +214,14 @@ if flag("--serve") {
             DispatchQueue.main.async {
                 encoder?.invalidate()
                 print(stats.summary(extra: [("mode", "\"serve\""), ("hardware", "\(encoder?.usingHardware ?? false)")]).json)
+                var code = code
+                if marker != nil {
+                    let l = latency.summary()
+                    print(l.json)
+                    let minSamples = Int(value("--min-samples", 300))
+                    if l.count < minSamples { print("FAIL: only \(l.count) latency samples (< \(minSamples))"); code = 1 }
+                    else { print("PASS") }
+                }
                 exit(code)
             }
         }
@@ -229,6 +245,14 @@ if flag("--serve") {
                 width = Int32(capturer.width); height = Int32(capturer.height)
             }
             encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)
+            if let marker {
+                marker.show()
+                let spec = marker.markerSpec(captureWidth: Int(width), captureHeight: Int(height))
+                print("{\"event\":\"marker\",\"spec\":\"\(spec)\"}")
+                if let i = args.firstIndex(of: "--marker-spec-out"), i + 1 < args.count {
+                    try spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+                }
+            }
             try server.start()
         } catch {
             print("FAIL: \(error)"); exit(1)

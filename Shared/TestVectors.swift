@@ -15,6 +15,7 @@ public enum TestVectors {
         .input(InputEvent(kind: .scroll, dx: -3.5, dy: 12.25)),
         .cursor(x: 0.125, y: 0.875, visible: true),
         .clipboard("ciao, perché? ✓"),
+        .latencyEcho(marker: 0x00ab_cdef),
     ]
 
     public static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }

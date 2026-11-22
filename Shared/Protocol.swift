@@ -28,6 +28,7 @@ public enum MessageType: UInt8, CaseIterable {
     case input = 20
     case cursor = 21
     case clipboard = 22
+    case latencyEcho = 40
 }
 
 public enum PeerRole: UInt8 {
@@ -99,6 +100,8 @@ public enum Message: Equatable {
     case input(InputEvent)
     case cursor(x: Float32, y: Float32, visible: Bool)
     case clipboard(String)
+    /// Client -> host: marker value read from a decoded frame (M4 latency harness).
+    case latencyEcho(marker: UInt32)
 
     public var type: MessageType {
         switch self {
@@ -111,6 +114,7 @@ public enum Message: Equatable {
         case .input: return .input
         case .cursor: return .cursor
         case .clipboard: return .clipboard
+        case .latencyEcho: return .latencyEcho
         }
     }
 
@@ -139,6 +143,8 @@ public enum Message: Equatable {
             w.f32(x); w.f32(y); w.u8(visible ? 1 : 0)
         case let .clipboard(text):
             w.bytes(Data(text.utf8))
+        case let .latencyEcho(marker):
+            w.u32(marker)
         }
         return w.data
     }
@@ -179,6 +185,8 @@ public enum Message: Equatable {
         case .clipboard:
             guard let s = String(data: r.rest(), encoding: .utf8) else { throw WireError.invalidValue("utf8") }
             msg = .clipboard(s)
+        case .latencyEcho:
+            msg = .latencyEcho(marker: try r.u32())
         }
         // Fixed-size messages must not carry trailing bytes.
         if r.remaining != 0 { throw WireError.invalidValue("trailing bytes in \(type)") }
