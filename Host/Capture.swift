@@ -16,7 +16,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Picks the main display. `nativePixels` captures at the panel's pixel size (Retina),
     /// otherwise at its point size. Sizes are capped to `maxWidth` and forced even.
-    func start(fps: Int32, nativePixels: Bool = true, maxWidth: Int? = nil) async throws {
+    func start(fps: Int32, nativePixels: Bool = true, showsCursor: Bool = true, maxWidth: Int? = nil) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let mainID = CGMainDisplayID()
         guard let display = content.displays.first(where: { $0.displayID == mainID }) ?? content.displays.first else {
@@ -35,7 +35,8 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         config.height = height
         config.minimumFrameInterval = CMTime(value: 1, timescale: fps)
         config.queueDepth = 3
-        config.showsCursor = false          // the client draws the cursor (Phase 3)
+        // Until the client draws its own cursor overlay (M7), include the cursor in the video.
+        config.showsCursor = showsCursor
         // Full-range 4:2:0 with explicit sRGB / BT.709 colour, so the iMac doesn't have to guess
         // (a range or matrix mismatch shows up as washed-out contrast).
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange

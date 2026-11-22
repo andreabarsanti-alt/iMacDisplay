@@ -21,6 +21,7 @@ import Shared
 //     --duration <s>  stop after N seconds (default: until the client disconnects)
 //     --pattern       also show the animated test-pattern window
 //     --points        capture at point size instead of native Retina pixels
+//     --no-cursor     leave the cursor out of the video (client overlay, M7)
 //     --allow-peer <ip>  override the pinned client address (tests only)
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -224,7 +225,7 @@ if flag("--serve") {
                 width = Int32(synth.width); height = Int32(synth.height)
                 synth.start(onFrame: onFrame)
             } else if let capturer {
-                try await capturer.start(fps: fps, nativePixels: !flag("--points"))
+                try await capturer.start(fps: fps, nativePixels: !flag("--points"), showsCursor: !flag("--no-cursor"))
                 width = Int32(capturer.width); height = Int32(capturer.height)
             }
             encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)

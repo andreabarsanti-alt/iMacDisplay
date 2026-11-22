@@ -47,6 +47,9 @@ All pass except link speed:
 - **Firewall:** off on both, turned on by the human later with allow rules (unsigned rebuilds would re-prompt).
 - Client launched with plain `ssh` (`scripts/run-client.sh`); `launchctl asuser` needs root.
 
+- **Quality (human feedback after M3):** point-size capture (1512x982) upscaled ~3x on the iMac 5K looked soft and low-contrast. Now: native Retina pixels (3024x1964), full-range 4:2:0, sRGB/BT.709 tagged end to end, 30 Mbps default. Human: "much better", delay "very short". iMac decode ~3.5 ms/frame.
+- Cursor is included in the video (`showsCursor`) until the client overlay in M7; `--no-cursor` turns it off.
+
 ## Blockers
 
 - Accessibility for Terminal on the MacBook (human) before M5.
