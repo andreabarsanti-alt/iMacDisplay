@@ -4,3 +4,4 @@
 STOP
 *.pid
 logs/
+dist/

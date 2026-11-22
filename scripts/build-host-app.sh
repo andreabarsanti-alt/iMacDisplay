@@ -4,10 +4,11 @@
 # Recording / Accessibility grants survive rebuilds. Output: .build/RemoteMirror.app
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift build -q -c release --product RemoteMirrorHostApp
+swift build -q -c release --arch arm64 --product RemoteMirrorHostApp
+BIN=$(swift build -c release --arch arm64 --show-bin-path)
 APP=.build/RemoteMirror.app
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS"
-cp .build/release/RemoteMirrorHostApp "$APP/Contents/MacOS/RemoteMirror"
+cp "$BIN/RemoteMirrorHostApp" "$APP/Contents/MacOS/RemoteMirror"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -24,5 +25,5 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 scripts/setup/signing-cert.sh unlock
-codesign -f -s "RemoteMirror Dev" --identifier local.remotemirror.host "$APP" 2>&1 | grep -v "replacing existing signature" || true
+codesign -f -s "RemoteMirror Dev" --keychain "$HOME/Library/Keychains/remotemirror.keychain-db" --identifier local.remotemirror.host "$APP" 2>&1 | grep -v "replacing existing signature" || true
 codesign -d -r- "$APP" 2>&1 | tail -1

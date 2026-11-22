@@ -15,6 +15,18 @@ DIR="$HOME/.imacdisplay/signing"
 KC="$HOME/Library/Keychains/remotemirror.keychain-db"
 PASSFILE="$DIR/kc-pass"
 
+# set_search_list [extra]: user keychain search list without ours, plus [extra].
+# Handles paths with spaces and an otherwise empty list.
+set_search_list() {
+  local list=()
+  while IFS= read -r k; do
+    k=$(echo "$k" | sed -e 's/^ *"//' -e 's/" *$//')
+    [ -n "$k" ] && [ "$k" != "$KC" ] && list+=("$k")
+  done < <(security list-keychains -d user)
+  [ -n "${1:-}" ] && list+=("$1")
+  security list-keychains -d user -s ${list[@]+"${list[@]}"}
+}
+
 unlock() { security unlock-keychain -p "$(cat "$PASSFILE")" "$KC"; security set-keychain-settings "$KC"; }  # no auto-lock
 
 case "${1:-}" in
@@ -24,11 +36,11 @@ case "${1:-}" in
       umask 077; /usr/bin/openssl rand -hex 24 > "$PASSFILE"
       security create-keychain -p "$(cat "$PASSFILE")" "$KC"
       # Add to the user search list (keeping existing entries) so codesign finds it.
-      LIST=$(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
-      security list-keychains -d user -s $LIST "$KC"
+      set_search_list "$KC"
     fi
     unlock
-    if security find-identity -p codesigning "$KC" | grep -q "$NAME"; then echo "Identity \"$NAME\" already exists."; exit 0; fi
+    IDS=$(security find-identity -p codesigning "$KC")
+    if grep -q "$NAME" <<<"$IDS"; then echo "Identity \"$NAME\" already exists."; exit 0; fi
     cat > cert.cnf <<CNF
 [req]
 distinguished_name = dn
@@ -53,8 +65,7 @@ CNF
   unlock) unlock ;;
   status) security find-identity -p codesigning "$KC" 2>/dev/null | grep "$NAME" || echo "No identity \"$NAME\"." ;;
   remove)
-    LIST=$(security list-keychains -d user | tr -d '"' | grep -v remotemirror.keychain-db | tr '\n' ' ')
-    security list-keychains -d user -s $LIST
+    set_search_list
     security delete-keychain "$KC" 2>/dev/null || true
     rm -rf "$DIR"; echo "Removed \"$NAME\" and its keychain."
     ;;

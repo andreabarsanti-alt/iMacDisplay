@@ -9,7 +9,7 @@ final class IdleWindow {
 
     init() {
         let rect = NSRect(x: 0, y: 0, width: 460, height: 190)
-        window = NSWindow(contentRect: rect, styleMask: [.titled, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: rect, styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "RemoteMirror"
         window.isReleasedWhenClosed = false
         let icon = NSImageView(image: NSImage(systemSymbolName: "display", accessibilityDescription: nil) ?? NSImage())

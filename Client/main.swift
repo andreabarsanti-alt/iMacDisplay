@@ -271,6 +271,25 @@ func quitApp() {
 }
 status.onQuit = { waitingMode ? quitApp() : escapeHatch() }
 
+/// Standard app menu so ⌘Q and the window's close button behave like a normal Mac app.
+final class AppActions: NSObject, NSWindowDelegate {
+    @objc func quit(_ sender: Any?) { waitingMode ? quitApp() : escapeHatch() }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { quitApp(); return false }
+}
+let appActions = AppActions()
+do {
+    let main = NSMenu()
+    let appItem = NSMenuItem()
+    main.addItem(appItem)
+    let appMenu = NSMenu()
+    let quitItem = NSMenuItem(title: "Quit RemoteMirror", action: #selector(AppActions.quit(_:)), keyEquivalent: "q")
+    quitItem.target = appActions
+    appMenu.addItem(quitItem)
+    appItem.submenu = appMenu
+    NSApp.mainMenu = main
+    idle.window.delegate = appActions
+}
+
 /// M6: scripted clicks through the same view <-> video mapping as real mouse events.
 func runMouseScript(_ spec: String) {
     let pts = spec.split(separator: ";").compactMap { pair -> (Double, Double)? in

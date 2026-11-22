@@ -25,5 +25,5 @@ PLIST
 SIGN="$HOME/imacdisplay-setup/signing-cert.sh"
 [ -x "$SIGN" ] || SIGN="scripts/setup/signing-cert.sh"
 "$SIGN" unlock
-codesign -f -s "RemoteMirror Dev" --identifier local.remotemirror.client "$APP" 2>&1 | grep -v "replacing existing signature" || true
+codesign -f -s "RemoteMirror Dev" --keychain "$HOME/Library/Keychains/remotemirror.keychain-db" --identifier local.remotemirror.client "$APP" 2>&1 | grep -v "replacing existing signature" || true
 codesign -d -r- "$APP" 2>&1 | tail -1

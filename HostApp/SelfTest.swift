@@ -15,6 +15,12 @@ enum SelfTest {
         m.synthetic = args.contains("--synthetic")
         m.log = { line in if args.contains("--verbose") { print(line) } }
         setvbuf(stdout, nil, _IOLBF, 0)
+        if args.contains("--check-permissions") || args.contains("--request-permissions") {
+            // Used by the installer: run as the installed app so macOS attributes the request to it.
+            if args.contains("--request-permissions") { HostPermissions.request(); sleep(1) }
+            HostPermissions.report().forEach { print($0) }
+            exit(0)
+        }
         if let n = value("--self-test-cycles").flatMap(Int.init) {
             Task { await cycles(m, n: n, withClient: args.contains("--with-client")) }
         } else if let kind = value("--self-test-error") {
