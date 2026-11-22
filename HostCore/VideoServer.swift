@@ -6,14 +6,15 @@ import Shared
 /// the pinned peer address and performs the handshake. Used twice: video
 /// (port 5001, host -> client frames) and input (port 5002, client -> host events),
 /// so input never waits behind video.
-final class VideoServer {
-    struct Config {
-        var bindHost = WireProtocol.hostAddress
-        var port = WireProtocol.videoPort
-        var allowedPeer = WireProtocol.clientAddress
-        var key: Data
+public final class VideoServer {
+    public struct Config {
+        public var bindHost = WireProtocol.hostAddress
+        public var port = WireProtocol.videoPort
+        public var allowedPeer = WireProtocol.clientAddress
+        public var key: Data
         /// Drop frames while more than this many bytes are still queued for sending.
-        var maxInFlightBytes = 4 * 1024 * 1024
+        public var maxInFlightBytes = 4 * 1024 * 1024
+        public init(key: Data) { self.key = key }
     }
 
     private let config: Config
@@ -22,23 +23,23 @@ final class VideoServer {
     private var client: FramedConnection?
     private var streaming = false
 
-    var log: (String) -> Void = { print($0) }
+    public var log: (String) -> Void = { print($0) }
     /// Client authenticated and handshake done.
-    var onClientReady: (() -> Void)?
-    var onClientGone: ((String) -> Void)?
-    var onKeyframeRequest: (() -> Void)?
-    var onRejected: ((String) -> Void)?
-    var onByeFromClient: ((ByeReason) -> Void)?
-    var onLatencyEcho: ((UInt32) -> Void)?
+    public var onClientReady: (() -> Void)?
+    public var onClientGone: ((String) -> Void)?
+    public var onKeyframeRequest: (() -> Void)?
+    public var onRejected: ((String) -> Void)?
+    public var onByeFromClient: ((ByeReason) -> Void)?
+    public var onLatencyEcho: ((UInt32) -> Void)?
 
-    var onInput: ((InputEvent) -> Void)?
+    public var onInput: ((InputEvent) -> Void)?
 
-    init(config: Config) {
+    public init(config: Config) {
         self.config = config
         queue = DispatchQueue(label: "server-\(config.port)", qos: .userInteractive)
     }
 
-    func start() throws {
+    public func start() throws {
         let local = NWEndpoint.hostPort(host: NWEndpoint.Host(config.bindHost),
                                         port: NWEndpoint.Port(rawValue: config.port)!)
         let params = LinkSecurity.parameters(key: config.key, local: local)
@@ -56,19 +57,36 @@ final class VideoServer {
         listener = l
     }
 
-    func stop(reason: ByeReason = .hostStopped, then: (() -> Void)? = nil) {
+    public func stop(reason: ByeReason = .hostStopped, then: (() -> Void)? = nil) {
         queue.async {
-            self.listener?.cancel(); self.listener = nil
             self.streaming = false
-            if let c = self.client { c.sayGoodbye(reason) { then?() } } else { then?() }
+            // Completes when the client got its bye (or timed out) AND the listener is
+            // really cancelled, so the port is released when `then` runs.
+            var pending = 2
+            var finished = false
+            let step = {
+                pending -= 1
+                if pending == 0 && !finished { finished = true; then?() }
+            }
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            let ms = { String(format: "%.0f", Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6) }
+            if let l = self.listener {
+                l.stateUpdateHandler = { st in
+                    if case .cancelled = st { self.log("{\"event\":\"stop_trace\",\"port\":\(self.config.port),\"what\":\"listener_cancelled\",\"ms\":\(ms())}"); self.queue.async(execute: step) }
+                }
+                l.cancel()
+                self.queue.asyncAfter(deadline: .now() + 0.5) { if pending > 0 { self.log("{\"event\":\"stop_trace\",\"port\":\(self.config.port),\"what\":\"timeout\",\"pending\":\(pending)}"); pending = 1; step() } }
+            } else { step() }
+            self.listener = nil
+            if let c = self.client { c.sayGoodbye(reason) { self.log("{\"event\":\"stop_trace\",\"port\":\(self.config.port),\"what\":\"bye_done\",\"ms\":\(ms())}"); self.queue.async(execute: step) } } else { step() }
             self.client = nil
         }
     }
 
-    var isStreaming: Bool { queue.sync { streaming } }
+    public var isStreaming: Bool { queue.sync { streaming } }
 
     /// Sends a small control message (cursor etc.) if a client is streaming.
-    func sendControl(_ m: Message) {
+    public func sendControl(_ m: Message) {
         guard let c = queue.sync(execute: { streaming ? client : nil }) else { return }
         c.send(m)
     }
@@ -76,7 +94,7 @@ final class VideoServer {
     /// Sends one encoded frame, or drops it if the socket is backed up.
     /// Returns false if dropped (caller should then force a keyframe).
     @discardableResult
-    func send(_ frame: VideoFrame) -> Bool {
+    public func send(_ frame: VideoFrame) -> Bool {
         guard let c = queue.sync(execute: { streaming ? client : nil }) else { return false }
         if c.inFlightBytes > config.maxInFlightBytes { return false }
         c.send(.videoFrame(frame))

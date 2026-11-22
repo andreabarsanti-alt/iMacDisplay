@@ -2,6 +2,7 @@ import AppKit
 import CoreMedia
 import Foundation
 import Shared
+import HostCore
 
 // RemoteMirrorHost: runs on the MacBook (arm64).
 //
@@ -178,175 +179,109 @@ if flag("--serve") {
     print(BuildInfo.banner("RemoteMirrorHost"))
     let key: Data
     do { key = try LinkSecurity.loadKey() } catch { print("FAIL: \(error)"); exit(1) }
-    let synthetic = flag("--synthetic")
-    if !synthetic && !HostPermissions.screenRecording() {
-        print("FAIL: Screen Recording permission not granted (Gate 2)"); exit(2)
-    }
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
-    let stats = HostStats()
-    var cfg = VideoServer.Config(key: key)
+
+    var cfg = HostSession.Config(key: key)
+    cfg.fps = fps; cfg.bitrate = bitrate; cfg.codec = codec
+    cfg.synthetic = flag("--synthetic")
+    cfg.nativePixels = !flag("--points")
+    cfg.videoCursor = flag("--video-cursor")
+    cfg.viewOnly = flag("--view-only")
+    cfg.allowReconnect = flag("--allow-reconnect")
+    cfg.deadManSeconds = args.firstIndex(of: "--dead-man").flatMap { i in i + 1 < args.count ? Double(args[i + 1]) : nil }
     if let i = args.firstIndex(of: "--allow-peer"), i + 1 < args.count { cfg.allowedPeer = args[i + 1] }
-    let server = VideoServer(config: cfg)
-    var encoder: VideoEncoder?
-    var width: Int32 = 0, height: Int32 = 0
-    var needKeyframe = false
+    if let i = args.firstIndex(of: "--bind"), i + 1 < args.count { cfg.bindHost = args[i + 1] }
+    if let i = args.firstIndex(of: "--simulate-missing"), i + 1 < args.count { cfg.simulateMissingPermission = args[i + 1] }
+    let session = HostSession(config: cfg)
+
+    // Test windows and hooks (CLI only).
     let pattern = flag("--pattern") ? TestPatternWindow() : nil
     let marker = flag("--latency") ? LatencyMarkerWindow() : nil
-    let status = StatusItem(title: "MacBook → iMac")
-    var inputCfg = cfg
-    inputCfg.port = WireProtocol.inputPort
-    let inputServer = VideoServer(config: inputCfg)
-    let deadMan = args.firstIndex(of: "--dead-man").flatMap { i in i + 1 < args.count ? Double(args[i + 1]) : nil }
-    let injector = InputInjector(deadManSeconds: deadMan)
-    injector.log = { print($0) }
-    let viewOnly = flag("--view-only")
-    if !viewOnly && !injector.isTrusted {
-        print("{\"event\":\"warning\",\"reason\":\"accessibility_denied\",\"detail\":\"input from the iMac will be ignored by macOS\"}")
-    }
-    let logInput = flag("--log-input")
-    inputServer.onInput = { e in
-        if logInput { print("{\"event\":\"input_event\",\"kind\":\(e.kind.rawValue),\"code\":\(e.code),\"flags\":\(e.flags)}") }
-        if !viewOnly { injector.inject(e) }
-    }
     let inputTest = flag("--input-test") ? InputTestWindow() : nil
-    // Cursor overlay (M7): position + shape go to the client, which draws the cursor itself.
-    let cursor = flag("--video-cursor") ? nil : CursorTracker()
-    cursor?.onPosition = { x, y in server.sendControl(.cursor(x: x, y: y, visible: true)) }
-    cursor?.onShape = { shape in server.sendControl(.cursorShape(shape)) }
     let mouseTest = flag("--mouse-test") ? MouseTestWindow() : nil
     let latency = LatencyStats()
-    server.onLatencyEcho = { v in
+    let status = StatusItem(title: "MacBook → iMac")
+    session.onLatencyEcho = { v in
         guard let t = marker?.drawTime(v) else { return }
         latency.add(Double(DispatchTime.now().uptimeNanoseconds - t) / 1e6)
     }
+    if flag("--log-input") {
+        session.onInputEvent = { e in print("{\"event\":\"input_event\",\"kind\":\(e.kind.rawValue),\"code\":\(e.code),\"flags\":\(e.flags)}") }
+    }
+    if !cfg.viewOnly && !HostPermissions.accessibility() {
+        print("{\"event\":\"warning\",\"reason\":\"accessibility_denied\"}")
+    }
 
-    func onEncoded(_ out: VideoEncoder.Output) {
-        let frame = VideoFrame(ptsNanos: out.ptsNanos,
-                               flags: (out.isKeyframe ? VideoFrame.keyframeFlag : 0) | (codec == kCMVideoCodecType_HEVC ? VideoFrame.hevcFlag : 0),
-                               width: UInt16(width), height: UInt16(height), payload: out.annexB)
-        if server.send(frame) {
-            stats.frameEncoded(bytes: out.annexB.count, keyframe: out.isKeyframe, encodeNanos: out.encodeNanos)
-        } else {
-            stats.frameDropped()
-            needKeyframe = true   // never queue: drop and recover with a keyframe
+    func report(code: Int32) -> Never {
+        let enc = session.encoder
+        print(session.stats.summary(extra: [("mode", "\"serve\""), ("hardware", "\(enc?.usingHardware ?? false)")]).json)
+        var code = code
+        if marker != nil {
+            let l = latency.summary()
+            print(l.json)
+            let minSamples = Int(value("--min-samples", 300))
+            if l.count < minSamples { print("FAIL: only \(l.count) latency samples (< \(minSamples))"); code = 1 }
+            else { print("PASS") }
         }
+        print("{\"event\":\"input\",\"injected\":\(session.injector.injectedCount),\"trusted\":\(session.injector.isTrusted)}")
+        if let inputTest {
+            let got = inputTest.text
+            let esc = got.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            print("{\"event\":\"input_test\",\"text\":\"\(esc)\"}")
+            if let i = args.firstIndex(of: "--expect-text"), i + 1 < args.count {
+                if got == args[i + 1] { print("PASS") } else { print("FAIL: field is \"\(got)\", expected \"\(args[i + 1])\""); code = 1 }
+            }
+            inputTest.close()
+        }
+        if let mouseTest {
+            let r = mouseTest.evaluate()
+            print(r.json)
+            if r.failures.isEmpty { print("PASS") } else { r.failures.forEach { print("FAIL: \($0)") }; code = 1 }
+            mouseTest.close()
+        }
+        exit(code)
     }
-    func onFrame(_ pb: CVPixelBuffer, _ pts: CMTime) {
-        guard server.isStreaming, let encoder else { return }
-        stats.frameCaptured()
-        if needKeyframe { needKeyframe = false; encoder.requestKeyframe() }
-        encoder.encode(pb, pts: pts)
-    }
-    var stopping = false
     func stopAll(_ why: String, code: Int32) {
-        guard !stopping else { return }
-        stopping = true
-        print("{\"event\":\"stopping\",\"reason\":\"\(why)\"}")
-        injector.stop()          // first: no more input, release held keys
-        status.set(.stopped)
-        inputServer.stop()
-        server.stop {
-            DispatchQueue.main.async {
-                encoder?.invalidate()
-                print(stats.summary(extra: [("mode", "\"serve\""), ("hardware", "\(encoder?.usingHardware ?? false)")]).json)
-                var code = code
-                if marker != nil {
-                    let l = latency.summary()
-                    print(l.json)
-                    let minSamples = Int(value("--min-samples", 300))
-                    if l.count < minSamples { print("FAIL: only \(l.count) latency samples (< \(minSamples))"); code = 1 }
-                    else { print("PASS") }
-                }
-                print("{\"event\":\"input\",\"injected\":\(injector.injectedCount),\"trusted\":\(injector.isTrusted)}")
-                if let inputTest {
-                    let got = inputTest.text
-                    let esc = got.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-                    print("{\"event\":\"input_test\",\"text\":\"\(esc)\"}")
-                    if let i = args.firstIndex(of: "--expect-text"), i + 1 < args.count {
-                        if got == args[i + 1] { print("PASS") } else { print("FAIL: field is \"\(got)\", expected \"\(args[i + 1])\""); code = 1 }
-                    }
-                    inputTest.close()
-                }
-                if let mouseTest {
-                    let r = mouseTest.evaluate()
-                    print(r.json)
-                    if r.failures.isEmpty { print("PASS") } else { r.failures.forEach { print("FAIL: \($0)") }; code = 1 }
-                    mouseTest.close()
-                }
-                exit(code)
-            }
+        session.stop(reason: why) { report(code: code) }
+    }
+    // The session stops itself (client gone without reconnect, capture error...): exit then.
+    session.onState = { st in
+        switch st {
+        case .waiting: status.set(.waiting)
+        case .sharing: status.set(.connected)
+        case .idle: status.set(.stopped); report(code: 0)
+        case .error: status.set(.stopped); report(code: 1)
+        default: break
         }
     }
-    server.onKeyframeRequest = { encoder?.requestKeyframe() }
-    // Mutual kill: client gone (bye, close or heartbeat timeout) stops everything.
-    let allowReconnect = flag("--allow-reconnect")
-    var escapeRequested = false
-    func clientGone(_ which: String, _ why: String) {
-        DispatchQueue.main.async {
-            if allowReconnect && !escapeRequested {
-                // Brief drop: release anything held and wait for the client to come back.
-                injector.releaseAll()
-                status.set(.waiting)
-                print("{\"event\":\"waiting_for_client\",\"which\":\"\(which)\",\"reason\":\"\(why)\"}")
-            } else {
-                stopAll("\(which) client gone: \(why)", code: 0)
-            }
-        }
-    }
-    server.onClientGone = { why in clientGone("video", why) }
-    inputServer.onClientGone = { why in clientGone("input", why) }
-    server.onClientReady = { DispatchQueue.main.async { cursor?.resend(); status.set(.connected) } }
-    let onBye: (ByeReason) -> Void = { r in
-        if r == .escapeHatch {
-            escapeRequested = true      // the iMac user ended the session: stop even with --allow-reconnect
-            print("{\"event\":\"escape_hatch\"}")
-        }
-    }
-    server.onByeFromClient = onBye
     status.onQuit = { stopAll("quit from menu", code: 0) }
     status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
-    inputServer.onByeFromClient = onBye
 
-    let synth = synthetic ? SyntheticSource(fps: fps) : nil
-    let capturer = synthetic ? nil : ScreenCapturer(onFrame: onFrame, onError: { e in
-        DispatchQueue.main.async { stopAll(e, code: 1) }
-    })
     Task { @MainActor in
+        pattern?.show()
         do {
-            pattern?.show()
-            if let synth {
-                width = Int32(synth.width); height = Int32(synth.height)
-                synth.start(onFrame: onFrame)
-            } else if let capturer {
-                try await capturer.start(fps: fps, nativePixels: !flag("--points"), showsCursor: flag("--video-cursor"))
-                width = Int32(capturer.width); height = Int32(capturer.height)
-            }
-            encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)
-            if let marker {
-                marker.show()
-                let spec = marker.markerSpec(captureWidth: Int(width), captureHeight: Int(height))
-                print("{\"event\":\"marker\",\"spec\":\"\(spec)\"}")
-                if let i = args.firstIndex(of: "--marker-spec-out"), i + 1 < args.count {
-                    try spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
-                }
-            }
-            try server.start()
-            try inputServer.start()
-            cursor?.start()
-            status.set(.waiting)
-            inputTest?.show()
-            if let mouseTest {
-                mouseTest.show()
-                if let i = args.firstIndex(of: "--mouse-spec-out"), i + 1 < args.count {
-                    try mouseTest.spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
-                }
-            }
+            try await session.start()
         } catch {
-            print("FAIL: \(error)"); exit(1)
+            print("FAIL: \(error)"); exit(cfg.simulateMissingPermission != nil || "\(error)".contains("Screen Recording") ? 2 : 1)
+        }
+        if let marker {
+            marker.show()
+            let spec = marker.markerSpec(captureWidth: Int(session.width), captureHeight: Int(session.height))
+            print("{\"event\":\"marker\",\"spec\":\"\(spec)\"}")
+            if let i = args.firstIndex(of: "--marker-spec-out"), i + 1 < args.count {
+                try? spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+            }
+        }
+        inputTest?.show()
+        if let mouseTest {
+            mouseTest.show()
+            if let i = args.firstIndex(of: "--mouse-spec-out"), i + 1 < args.count {
+                try? mouseTest.spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+            }
         }
     }
-    if printStats { startStatsTimer(stats) }
+    if printStats { startStatsTimer(session.stats) }
     if let i = args.firstIndex(of: "--duration"), i + 1 < args.count, let d = Double(args[i + 1]) {
         DispatchQueue.main.asyncAfter(deadline: .now() + d) { stopAll("duration elapsed", code: 0) }
     }

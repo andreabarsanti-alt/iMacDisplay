@@ -1,6 +1,7 @@
 import AppKit
 import QuartzCore
 import Shared
+import HostCore
 
 /// Borderless window near the top-left of the main screen showing the marker
 /// counter, updated every display refresh. Records when each value was drawn.

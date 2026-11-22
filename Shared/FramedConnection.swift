@@ -102,13 +102,16 @@ public final class FramedConnection {
     public func sayGoodbye(_ reason: ByeReason, then: (() -> Void)? = nil) {
         guard !closed else { then?(); return }
         var finished = false
-        let finish = { [weak self] (why: String) in
+        // Strong reference on purpose: the owner usually drops the connection right
+        // after asking for a goodbye; it must stay alive until it is closed.
+        let me = self
+        let finish = { (why: String) in
             guard !finished else { return }
             finished = true
-            self?.close(why)
+            me.close(why)
             then?()
         }
-        send(.bye(reason)) { [weak self] _ in self?.queue.async { finish("sent bye \(reason)") } }
+        send(.bye(reason)) { _ in me.queue.async { finish("sent bye \(reason)") } }
         queue.asyncAfter(deadline: .now() + 0.5) { finish("bye timeout") }
     }
 

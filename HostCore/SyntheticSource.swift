@@ -4,14 +4,14 @@ import Foundation
 
 /// Generates moving NV12 frames at a fixed rate; stands in for screen capture
 /// when Screen Recording isn't granted (tests, transport work).
-final class SyntheticSource {
-    let width: Int, height: Int
+public final class SyntheticSource {
+    public let width: Int, height: Int
     private let fps: Int32
     private var pool: CVPixelBufferPool?
     private var timer: DispatchSourceTimer?
     private var n: Int64 = 0
 
-    init(width: Int = 1440, height: Int = 900, fps: Int32) {
+    public init(width: Int = 1440, height: Int = 900, fps: Int32) {
         self.width = width; self.height = height; self.fps = fps
         let attrs: [CFString: Any] = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
                                       kCVPixelBufferWidthKey: width, kCVPixelBufferHeightKey: height,
@@ -19,7 +19,7 @@ final class SyntheticSource {
         CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool)
     }
 
-    func start(onFrame: @escaping (CVPixelBuffer, CMTime) -> Void) {
+    public func start(onFrame: @escaping (CVPixelBuffer, CMTime) -> Void) {
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "synthetic", qos: .userInteractive))
         t.schedule(deadline: .now(), repeating: 1.0 / Double(fps))
         t.setEventHandler { [weak self] in
@@ -31,7 +31,7 @@ final class SyntheticSource {
         t.resume()
     }
 
-    func stop() { timer?.cancel(); timer = nil }
+    public func stop() { timer?.cancel(); timer = nil }
 
     private func makeFrame() -> CVPixelBuffer? {
         var pb: CVPixelBuffer?

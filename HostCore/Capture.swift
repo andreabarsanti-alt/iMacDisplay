@@ -3,20 +3,20 @@ import Foundation
 import ScreenCaptureKit
 
 /// Captures the main display with ScreenCaptureKit and hands complete frames to `onFrame`.
-final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
+public final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "capture", qos: .userInteractive)
     private let onFrame: (CVPixelBuffer, CMTime) -> Void
     private let onError: (String) -> Void
-    private(set) var width = 0, height = 0
+    public private(set) var width = 0, height = 0
 
-    init(onFrame: @escaping (CVPixelBuffer, CMTime) -> Void, onError: @escaping (String) -> Void) {
+    public init(onFrame: @escaping (CVPixelBuffer, CMTime) -> Void, onError: @escaping (String) -> Void) {
         self.onFrame = onFrame; self.onError = onError
     }
 
     /// Picks the main display. `nativePixels` captures at the panel's pixel size (Retina),
     /// otherwise at its point size. Sizes are capped to `maxWidth` and forced even.
-    func start(fps: Int32, nativePixels: Bool = true, showsCursor: Bool = true, maxWidth: Int? = nil) async throws {
+    public func start(fps: Int32, nativePixels: Bool = true, showsCursor: Bool = true, maxWidth: Int? = nil) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let mainID = CGMainDisplayID()
         guard let display = content.displays.first(where: { $0.displayID == mainID }) ?? content.displays.first else {
@@ -49,13 +49,13 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         stream = s
     }
 
-    func stop() async {
+    public func stop() async {
         guard let s = stream else { return }
         stream = nil
         try? await s.stopCapture()
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
+    public func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sample.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = attachments.first?[.status] as? Int,
@@ -64,7 +64,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         onFrame(pb, CMSampleBufferGetPresentationTimeStamp(sample))
     }
 
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
+    public func stream(_ stream: SCStream, didStopWithError error: Error) {
         onError("capture stopped: \(error.localizedDescription)")
     }
 }

@@ -5,7 +5,7 @@ import Shared
 
 /// Turns InputEvents from the iMac into CGEvents on the MacBook.
 /// Tracks held keys so everything can be released on stop (no stuck keys).
-final class InputInjector {
+public final class InputInjector {
     private let source = CGEventSource(stateID: .hidSystemState)
     private var heldKeys = Set<UInt16>()
     private var heldButtons = Set<Int>()
@@ -15,16 +15,16 @@ final class InputInjector {
     /// Dead man's switch: if set, injection stops by itself at this uptime.
     private var deadline: UInt64?
 
-    var log: ((String) -> Void)?
-    private(set) var injectedCount = 0
+    public var log: ((String) -> Void)?
+    public private(set) var injectedCount = 0
 
-    init(deadManSeconds: Double? = nil) {
+    public init(deadManSeconds: Double? = nil) {
         if let s = deadManSeconds { deadline = DispatchTime.now().uptimeNanoseconds + UInt64(s * 1e9) }
     }
 
-    var isTrusted: Bool { AXIsProcessTrusted() }
+    public var isTrusted: Bool { AXIsProcessTrusted() }
 
-    func inject(_ e: InputEvent) {
+    public func inject(_ e: InputEvent) {
         lock.lock(); defer { lock.unlock() }
         guard enabled else { return }
         if let d = deadline, DispatchTime.now().uptimeNanoseconds > d {
@@ -53,7 +53,7 @@ final class InputInjector {
     }
 
     /// Normalized video coordinates (origin top-left) -> global display points.
-    static func displayPoint(nx: Float32, ny: Float32) -> CGPoint {
+    public static func displayPoint(nx: Float32, ny: Float32) -> CGPoint {
         let b = CGDisplayBounds(CGMainDisplayID())
         let x = b.minX + CGFloat(min(max(nx, 0), 1)) * b.width
         let y = b.minY + CGFloat(min(max(ny, 0), 1)) * b.height
@@ -97,13 +97,13 @@ final class InputInjector {
     }
 
     /// Releases held keys/buttons but keeps injecting (client dropped, may reconnect).
-    func releaseAll() {
+    public func releaseAll() {
         lock.lock(); defer { lock.unlock() }
         releaseAllLocked()
     }
 
     /// Releases held keys and clears modifiers; called on every stop path.
-    func stop() {
+    public func stop() {
         lock.lock(); defer { lock.unlock() }
         releaseAllLocked()
         enabled = false

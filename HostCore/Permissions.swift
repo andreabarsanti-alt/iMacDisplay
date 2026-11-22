@@ -4,11 +4,11 @@ import Foundation
 
 /// Permission probe (Gate 2): prints one JSON line per permission.
 /// When launched from Terminal, macOS attributes these to Terminal.app.
-enum HostPermissions {
-    static func screenRecording() -> Bool { CGPreflightScreenCaptureAccess() }
-    static func accessibility() -> Bool { AXIsProcessTrusted() }
+public enum HostPermissions {
+    public static func screenRecording() -> Bool { CGPreflightScreenCaptureAccess() }
+    public static func accessibility() -> Bool { AXIsProcessTrusted() }
 
-    static func report() -> [String] {
+    public static func report() -> [String] {
         [
             "{\"permission\":\"screen_recording\",\"status\":\"\(screenRecording() ? "granted" : "denied")\"}",
             "{\"permission\":\"accessibility\",\"status\":\"\(accessibility() ? "granted" : "denied")\"}",
@@ -16,7 +16,7 @@ enum HostPermissions {
     }
 
     /// Shows the system prompts (only the first time; afterwards the user must use System Settings).
-    static func request() {
+    public static func request() {
         if !screenRecording() { _ = CGRequestScreenCaptureAccess() }
         if !accessibility() {
             let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String

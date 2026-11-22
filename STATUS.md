@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M9 done (tag `m9`). M7 feel test passed (human: "Feels great", 2026-11-22). M9 done (tag `m9`): defaults now HEVC 60 fps 12 Mbps (see docs/tuning.md). Human checkpoint passed: "it seems very cool" (2026-11-22). Next: M10 host menu bar app. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M10 done (tag `m10`): MacBook menu bar app (`scripts/build-host-app.sh` -> `.build/RemoteMirror.app`). Next: M11 iMac waiting/status app; then human tries both apps together (needs Screen Recording + Accessibility for RemoteMirror.app on the MacBook).
 
 ## Machines
 
@@ -31,6 +31,8 @@ All pass except link speed:
 
 ## Last test results
 
+- M10 (`scripts/m10-test.sh`): state-machine unit tests; 20 start/stop cycles with the iMac connected and real capture: Stop avg 10 ms / max 23 ms, nothing listening and no capture left after each; permission denied -> "Error: Screen Recording not granted"; cable unplugged -> "Error: cable unplugged" detected in 0.9 s; no process left.
+- **Bug found by M10 and fixed:** `sayGoodbye` held the connection weakly, so when the server dropped its reference the bye never completed, the 0.5 s timeout fired and the connection was never closed (the iMac only noticed via heartbeat timeout). Stop went from ~530 ms to ~10 ms.
 - M9 (`scripts/m9-tune.sh`, 2 rounds): best = HEVC 60 fps 12 Mbps, median 32.7 / p95 45.1 ms, 57.2 fps, gap std 6.0 ms. Full regression M3-M8 passes with the new defaults (M3 similarity 0.960).
 - Regression caught a bug from the M->Z pause rename: the key-script table mapped "m" to Z. Fixed; lesson: run the full test suite after any blanket rename.
 - M8 (`scripts/m8-test.sh`): client killed -> host waits, restarted client served with keyframe first; host killed and restarted after ~1 s -> client reconnected 1372 ms after the drop, keyframe first, session continued; without the flag the client quits at once (Mutual kill); escape hatch stops a --allow-reconnect host.
@@ -73,6 +75,9 @@ All pass except link speed:
 
 - **Reconnect (M8):** `--allow-reconnect` on either side. Host: a dropped client releases held input and the host waits (escape hatch still stops it). Client: a drop starts a 30 s retry window; the first frame after reconnect is a keyframe. `scripts/session.sh` uses it on both sides.
 - **Status items:** both apps show a menu bar icon (Waiting / Connected / Reconnecting / Paused) with Quit; state changes are logged as JSON. Full menus come with M10/M11.
+
+- **HostCore library (M10):** capture/encode/servers/injector/cursor + `HostSession` (start/stop sequence) + pure `HostStateMachine`. The CLI (`RemoteMirrorHost --serve`, used by all tests) and the menu bar app both run on it.
+- **Menu bar app:** SwiftUI MenuBarExtra, LSUIElement. Start/Stop toggle, status + fps/Mbps line, allow keyboard & mouse switch, quality preset (12/20 Mbps), permissions with buttons to the right Settings panes, Check link, Ctrl-Option-Cmd-S global hotkey (Carbon, no permission), auto-stop on sleep / screen lock / cable unplugged / escape hatch. Reconnect always on in the app. Pairing moves to M12 (installer). MacBook now also has the local "RemoteMirror Dev" signing identity.
 
 ## Blockers
 

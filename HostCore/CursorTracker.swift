@@ -2,16 +2,16 @@ import AppKit
 import Shared
 
 /// Polls the host cursor position (120 Hz) and shape (10 Hz) and reports changes.
-final class CursorTracker {
+public final class CursorTracker {
     private var posTimer: Timer?, shapeTimer: Timer?
     private var lastPos: (Float32, Float32)?
     private var lastShapeKey: Int?
-    private(set) var currentShape: CursorShape?
+    public private(set) var currentShape: CursorShape?
 
-    var onPosition: ((Float32, Float32) -> Void)?
-    var onShape: ((CursorShape) -> Void)?
+    public var onPosition: ((Float32, Float32) -> Void)?
+    public var onShape: ((CursorShape) -> Void)?
 
-    func start() {
+    public func start() {
         posTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in self?.pollPosition() }
         shapeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.pollShape() }
         RunLoop.main.add(posTimer!, forMode: .common)
@@ -19,10 +19,10 @@ final class CursorTracker {
         pollShape()
     }
 
-    func stop() { posTimer?.invalidate(); shapeTimer?.invalidate() }
+    public func stop() { posTimer?.invalidate(); shapeTimer?.invalidate() }
 
     /// Forces the next poll to resend position (e.g. when a client connects).
-    func resend() { lastPos = nil; if let s = currentShape { onShape?(s) } }
+    public func resend() { lastPos = nil; if let s = currentShape { onShape?(s) } }
 
     private func pollPosition() {
         guard let screen = NSScreen.screens.first else { return }

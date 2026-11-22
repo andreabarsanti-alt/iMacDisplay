@@ -5,17 +5,17 @@ import VideoToolbox
 
 /// Hardware H.264/HEVC encoder producing Annex B access units
 /// (parameter sets prepended to every keyframe).
-final class VideoEncoder {
-    struct Output {
-        let annexB: Data
-        let isKeyframe: Bool
-        let ptsNanos: UInt64
-        let encodeNanos: UInt64
+public final class VideoEncoder {
+    public struct Output {
+        public let annexB: Data
+        public let isKeyframe: Bool
+        public let ptsNanos: UInt64
+        public let encodeNanos: UInt64
     }
 
-    enum EncoderError: Error, CustomStringConvertible {
+    public enum EncoderError: Error, CustomStringConvertible {
         case create(OSStatus), property(String, OSStatus)
-        var description: String {
+        public var description: String {
             switch self {
             case let .create(s): return "VTCompressionSessionCreate failed (\(s))"
             case let .property(k, s): return "setting \(k) failed (\(s))"
@@ -23,16 +23,16 @@ final class VideoEncoder {
         }
     }
 
-    let width: Int32, height: Int32, codec: CMVideoCodecType
+    public let width: Int32, height: Int32, codec: CMVideoCodecType
     private var session: VTCompressionSession?
     private var forceKeyframe = true
     private let lock = NSLock()
     private let onOutput: (Output) -> Void
     private var submitTimes: [Int64: UInt64] = [:]   // pts value -> submit time
 
-    private(set) var usingHardware = false
+    public private(set) var usingHardware = false
 
-    init(width: Int32, height: Int32, fps: Int32, bitrate: Int, codec: CMVideoCodecType = kCMVideoCodecType_H264,
+    public init(width: Int32, height: Int32, fps: Int32, bitrate: Int, codec: CMVideoCodecType = kCMVideoCodecType_H264,
          onOutput: @escaping (Output) -> Void) throws {
         self.width = width; self.height = height; self.codec = codec; self.onOutput = onOutput
         let spec: [CFString: Any] = [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true]
@@ -77,7 +77,7 @@ final class VideoEncoder {
 
     deinit { invalidate() }
 
-    func invalidate() {
+    public func invalidate() {
         lock.lock(); let s = session; session = nil; lock.unlock()
         if let s {
             VTCompressionSessionCompleteFrames(s, untilPresentationTimeStamp: .invalid)
@@ -85,9 +85,9 @@ final class VideoEncoder {
         }
     }
 
-    func requestKeyframe() { lock.lock(); forceKeyframe = true; lock.unlock() }
+    public func requestKeyframe() { lock.lock(); forceKeyframe = true; lock.unlock() }
 
-    func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
+    public func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         lock.lock()
         guard let s = session else { lock.unlock(); return }
         let props: CFDictionary? = forceKeyframe

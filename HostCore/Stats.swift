@@ -1,7 +1,7 @@
 import Foundation
 
 /// Rolling counters printed as one JSON line per interval (`--stats`) and as a final summary.
-final class HostStats {
+public final class HostStats {
     private let lock = NSLock()
     private var captured = 0, encoded = 0, dropped = 0, keyframes = 0
     private var bytes = 0
@@ -9,11 +9,13 @@ final class HostStats {
     private var totalCaptured = 0, totalEncoded = 0, totalDropped = 0, totalKeyframes = 0, totalBytes = 0
     private var totalEncodeNanos: UInt64 = 0
     private let start = Date()
-    var errors: [String] = []
+    public var errors: [String] = []
 
-    func frameCaptured() { lock.lock(); captured += 1; totalCaptured += 1; lock.unlock() }
-    func frameDropped() { lock.lock(); dropped += 1; totalDropped += 1; lock.unlock() }
-    func frameEncoded(bytes n: Int, keyframe: Bool, encodeNanos: UInt64) {
+    public init() {}
+
+    public func frameCaptured() { lock.lock(); captured += 1; totalCaptured += 1; lock.unlock() }
+    public func frameDropped() { lock.lock(); dropped += 1; totalDropped += 1; lock.unlock() }
+    public func frameEncoded(bytes n: Int, keyframe: Bool, encodeNanos: UInt64) {
         lock.lock()
         encoded += 1; totalEncoded += 1; bytes += n; totalBytes += n
         if keyframe { keyframes += 1; totalKeyframes += 1 }
@@ -21,10 +23,19 @@ final class HostStats {
         encodeNanosMax = max(encodeNanosMax, encodeNanos)
         lock.unlock()
     }
-    func error(_ s: String) { lock.lock(); errors.append(s); lock.unlock() }
+    public func error(_ s: String) { lock.lock(); errors.append(s); lock.unlock() }
+
+    /// Frames sent and megabits since the last call (resets interval counters).
+    public func snapshot(seconds: Double) -> (fps: Double, mbps: Double, dropped: Int) {
+        lock.lock(); defer {
+            captured = 0; encoded = 0; dropped = 0; keyframes = 0; bytes = 0
+            encodeNanosTotal = 0; encodeNanosMax = 0; lock.unlock()
+        }
+        return (Double(encoded) / seconds, Double(bytes) * 8 / seconds / 1e6, dropped)
+    }
 
     /// Interval line; resets interval counters.
-    func intervalJSON(seconds: Double) -> String {
+    public func intervalJSON(seconds: Double) -> String {
         lock.lock(); defer {
             captured = 0; encoded = 0; dropped = 0; keyframes = 0; bytes = 0
             encodeNanosTotal = 0; encodeNanosMax = 0; lock.unlock()
@@ -40,7 +51,7 @@ final class HostStats {
         ])
     }
 
-    func summary(extra: [(String, String)]) -> (json: String, encodeFps: Double, bytes: Int, errors: [String]) {
+    public func summary(extra: [(String, String)]) -> (json: String, encodeFps: Double, bytes: Int, errors: [String]) {
         lock.lock(); defer { lock.unlock() }
         let secs = Date().timeIntervalSince(start)
         let fps = Double(totalEncoded) / secs
