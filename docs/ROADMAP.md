@@ -21,15 +21,18 @@ the built-in screen is off.
 - Keep windows off the invisible display when the lid is open (or share it).
 - Re-run tuning (M9): 5120x2880 capture vs 2560x1440 HiDPI, HEVC 60 fps.
 
-**Acceptance:** with the lid closed, Start Sharing from the iMac side or a hotkey
-(the menu bar isn't visible with the lid closed), 30 min session without sleep,
+**Acceptance:** Start Sharing with the lid open, close the lid: 30 min session without sleep,
 latency within 10% of M9, full-screen image without bars; opening the lid switches
 back to the built-in display cleanly.
 
-**Open question:** starting a session with the lid closed. Options: start before
-closing the lid; a "Start" button in the iMac waiting window that asks the MacBook
-(needs a small always-on listener on the MacBook, which the M10 rule "nothing
-listens while Idle" currently forbids); or a scheduled/hotkey start.
+**Flow (decided 2026-11-22):** start sharing with the lid **open** (menu bar as
+today), then close the lid; the session continues. No starting with the lid
+closed, so "nothing listens while Idle" stays.
+
+**To decide when the plug arrives:** what the iMac shows while the lid is still open:
+- *dummy display from the start* - no switch when the lid closes, no bars; or
+- *built-in first, follow the lid* - on lid close macOS moves windows to the dummy
+  and the host switches capture to it (brief blink, aspect changes 3:2 -> 16:9).
 
 ## Later ideas (not planned)
 
