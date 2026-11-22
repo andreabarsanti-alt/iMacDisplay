@@ -5,9 +5,10 @@
 #   ./link.sh setup client   # on the iMac:    10.77.0.2
 #   ./link.sh revert         # restore the state saved by the first "setup"
 #   ./link.sh status         # show current state, change nothing
+#   ./link.sh detect         # show which adapter setup would use
 #
-# Network service name defaults: host "Belkin USB-C LAN", client "Ethernet".
-# Override with:  SERVICE="My Adapter" ./link.sh setup host
+# The adapter is detected (the wired one with the cable plugged in); override with
+#   SERVICE="My Adapter" ./link.sh setup host
 #
 # The first "setup" saves the original state to ~/.imacdisplay/link-backup/.
 # Later setups never overwrite it, so "revert" always goes back to the
@@ -21,20 +22,53 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 
 services() { networksetup -listallnetworkservices | tail -n +2 | sed 's/^\*//'; }
 
+# Wired candidates: (service<TAB>device) for Ethernet-like hardware ports, in service order.
+wired_services() {
+  networksetup -listnetworkserviceorder | awk '
+    /^\([0-9*]+\)/ { sub(/^\([0-9*]+\) /, ""); svc=$0; next }
+    /Hardware Port:/ {
+      port=$0; sub(/.*Hardware Port: /, "", port); sub(/, Device:.*/, "", port)
+      dev=$0;  sub(/.*Device: /, "", dev); sub(/\).*/, "", dev)
+      if (dev != "" && port !~ /Wi-Fi|Bluetooth|Thunderbolt Bridge|iPhone|iPad|VPN|FireWire|Thunderbolt [0-9]/)
+        print svc "\t" dev
+    }'
+}
+
+link_active() { ifconfig "$1" 2>/dev/null | grep -q "status: active"; }
+
+# Picks the network service for the cable: SERVICE=... if given, otherwise the wired
+# adapter with the cable plugged in, the only wired adapter, or asks.
 service_for_role() {
   if [ -n "${SERVICE:-}" ]; then echo "$SERVICE"; return; fi
-  case "$1" in
-    host)   echo "Belkin USB-C LAN" ;;
-    client) echo "Ethernet" ;;
-    *)      die "role must be host or client" ;;
-  esac
+  local all=() active=() line
+  while IFS= read -r line; do [ -n "$line" ] && all+=("$line"); done < <(wired_services)
+  for line in "${all[@]+"${all[@]}"}"; do link_active "${line#*$'\t'}" && active+=("$line"); done
+  if [ ${#active[@]} -eq 1 ]; then echo "${active[0]%%$'\t'*}"; return; fi
+  if [ ${#all[@]} -eq 1 ]; then echo "${all[0]%%$'\t'*}"; return; fi
+  if [ ${#all[@]} -eq 0 ]; then
+    echo "No wired network adapter found. Plug in the Ethernet adapter (with the cable to the" >&2
+    echo "other Mac), then run the installer again. To skip this step: --skip-network" >&2
+    exit 1
+  fi
+  local pool=("${all[@]}"); [ ${#active[@]} -gt 1 ] && pool=("${active[@]}")
+  echo "Which adapter is connected to the other Mac?" >&2
+  local i=1
+  for line in "${pool[@]}"; do
+    printf '  %d) %s (%s%s)\n' $i "${line%%$'\t'*}" "${line#*$'\t'}" "$(link_active "${line#*$'\t'}" && echo ", cable connected")" >&2
+    i=$((i+1))
+  done
+  local n
+  if ! { true </dev/tty; } 2>/dev/null; then echo "Run in a Terminal to choose, or set SERVICE=\"<name>\"." >&2; exit 1; fi
+  read -r -p "Number: " n </dev/tty
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le ${#pool[@]} ] || { echo "No adapter chosen." >&2; exit 1; }
+  echo "${pool[$((n-1))]%%$'\t'*}"
 }
 
 check_service() {
   services | grep -qxF "$1" || {
     echo "Network service \"$1\" not found. Available services:" >&2
     services | sed 's/^/  /' >&2
-    die "rerun with SERVICE=\"<name>\""
+    die "run again with SERVICE=\"<one of the names above>\""
   }
 }
 
@@ -88,8 +122,10 @@ status() {
 
 setup() {
   local role="${1:-}"; [ -n "$role" ] || die "usage: $0 setup host|client"
-  local svc ip; svc=$(service_for_role "$role")
-  case "$role" in host) ip=10.77.0.1 ;; client) ip=10.77.0.2 ;; esac
+  local svc ip
+  case "$role" in host) ip=10.77.0.1 ;; client) ip=10.77.0.2 ;; *) die "role must be host or client" ;; esac
+  svc=$(service_for_role) || exit 1
+  echo "Using network service: $svc"
   check_service "$svc"
   save_backup "$svc"
   echo "Setting $svc to $ip / $MASK, no router..."
@@ -134,5 +170,8 @@ case "${1:-}" in
   setup)  setup "${2:-}" ;;
   revert) revert ;;
   status) status ;;
+  detect) echo "wired adapters:"; wired_services | while IFS=$'\t' read -r svc dev; do
+            printf '  %s (%s)%s\n' "$svc" "$dev" "$(link_active "$dev" && echo "  <- cable connected")"; done
+          echo "setup would use: $(service_for_role)" ;;
   *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -26,7 +26,7 @@ fi
 if has_flag --skip-network "$@"; then warn "network: skipped (--skip-network)"
 else
   say "Network: cable link 10.77.0.2 (needs your password)"
-  SERVICE="${SERVICE:-Ethernet}" "$HERE/link.sh" setup client && record network
+  SERVICE="${SERVICE:-}" "$HERE/link.sh" setup client && record network
 fi
 
 say "Pairing key"
