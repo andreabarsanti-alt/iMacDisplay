@@ -14,14 +14,18 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         self.onFrame = onFrame; self.onError = onError
     }
 
-    /// Picks the main display; size is the display's point size (not Retina pixels), forced even.
-    func start(fps: Int32, maxWidth: Int? = nil) async throws {
+    /// Picks the main display. `nativePixels` captures at the panel's pixel size (Retina),
+    /// otherwise at its point size. Sizes are capped to `maxWidth` and forced even.
+    func start(fps: Int32, nativePixels: Bool = true, maxWidth: Int? = nil) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let mainID = CGMainDisplayID()
         guard let display = content.displays.first(where: { $0.displayID == mainID }) ?? content.displays.first else {
             throw NSError(domain: "Capture", code: 1, userInfo: [NSLocalizedDescriptionKey: "no display"])
         }
         var w = display.width, h = display.height
+        if nativePixels, let mode = CGDisplayCopyDisplayMode(display.displayID) {
+            w = mode.pixelWidth; h = mode.pixelHeight
+        }
         if let maxWidth, w > maxWidth { h = h * maxWidth / w; w = maxWidth }
         width = w & ~1; height = h & ~1
 
@@ -32,7 +36,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         config.minimumFrameInterval = CMTime(value: 1, timescale: fps)
         config.queueDepth = 3
         config.showsCursor = false          // the client draws the cursor (Phase 3)
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        // Full-range 4:2:0 with explicit sRGB / BT.709 colour, so the iMac doesn't have to guess
+        // (a range or matrix mismatch shows up as washed-out contrast).
+        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        config.colorSpaceName = CGColorSpace.sRGB
+        config.colorMatrix = CGDisplayStream.yCbCrMatrix_ITU_R_709_2
 
         let s = SCStream(filter: filter, configuration: config, delegate: self)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)

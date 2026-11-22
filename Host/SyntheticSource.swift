@@ -13,7 +13,7 @@ final class SyntheticSource {
 
     init(width: Int = 1440, height: Int = 900, fps: Int32) {
         self.width = width; self.height = height; self.fps = fps
-        let attrs: [CFString: Any] = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+        let attrs: [CFString: Any] = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
                                       kCVPixelBufferWidthKey: width, kCVPixelBufferHeightKey: height,
                                       kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
         CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool)

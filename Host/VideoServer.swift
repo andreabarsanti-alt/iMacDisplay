@@ -11,7 +11,7 @@ final class VideoServer {
         var allowedPeer = WireProtocol.clientAddress
         var key: Data
         /// Drop frames while more than this many bytes are still queued for sending.
-        var maxInFlightBytes = 2 * 1024 * 1024
+        var maxInFlightBytes = 4 * 1024 * 1024
     }
 
     private let config: Config

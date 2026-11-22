@@ -11,7 +11,7 @@ import Shared
 //   --request-permissions          show the system permission prompts, then print status
 //   --encoder-test                 encode synthetic frames (no permissions needed)
 //   --capture-test                 capture the main display + encode (M2 acceptance test)
-//     --duration <s>  (10)  --fps <n> (30)  --bitrate <Mbps> (20)  --hevc
+//     --duration <s>  (10)  --fps <n> (30)  --bitrate <Mbps> (30)  --hevc
 //     --stats         print a JSON stats line every second
 //     --no-pattern    don't open the animated test-pattern window (capture-test)
 //   --compare <a.png> <b.png>      print image similarity 0...1
@@ -20,6 +20,7 @@ import Shared
 //     --synthetic     stream generated frames instead of the screen (no permission needed)
 //     --duration <s>  stop after N seconds (default: until the client disconnects)
 //     --pattern       also show the animated test-pattern window
+//     --points        capture at point size instead of native Retina pixels
 //     --allow-peer <ip>  override the pinned client address (tests only)
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -47,7 +48,7 @@ if flag("--request-permissions") {
 
 let duration = value("--duration", 10)
 let fps = Int32(value("--fps", 30))
-let bitrate = Int(value("--bitrate", 20) * 1_000_000)
+let bitrate = Int(value("--bitrate", 30) * 1_000_000)
 let codec = flag("--hevc") ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264
 let codecName = flag("--hevc") ? "hevc" : "h264"
 let printStats = flag("--stats")
@@ -223,7 +224,7 @@ if flag("--serve") {
                 width = Int32(synth.width); height = Int32(synth.height)
                 synth.start(onFrame: onFrame)
             } else if let capturer {
-                try await capturer.start(fps: fps)
+                try await capturer.start(fps: fps, nativePixels: !flag("--points"))
                 width = Int32(capturer.width); height = Int32(capturer.height)
             }
             encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)

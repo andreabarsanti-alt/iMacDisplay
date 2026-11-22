@@ -53,6 +53,10 @@ final class VideoEncoder {
         try set(kVTCompressionPropertyKey_AverageBitRate, bitrate)
         // DataRateLimits: [bytes, seconds] -> cap at 1.5x the average over 1 s.
         try set(kVTCompressionPropertyKey_DataRateLimits, [Int(Double(bitrate) * 1.5 / 8), 1] as CFArray)
+        // Tag colour in the bitstream (VUI) so the decoder output carries it.
+        try set(kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2)
+        try set(kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_ITU_R_709_2)
+        try set(kVTCompressionPropertyKey_YCbCrMatrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2)
         try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, 60)
         try set(kVTCompressionPropertyKey_ExpectedFrameRate, fps)
         if codec == kCMVideoCodecType_H264 {
