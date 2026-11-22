@@ -13,6 +13,8 @@ final class ShortcutTap {
     var isActive: () -> Bool = { false }
     var onEvent: ((InputEvent) -> Void)?
     var onEscape: (() -> Void)?
+    /// Ctrl-Option-Cmd-Z: hide/show the mirror without disconnecting. Seen even while hidden.
+    var onPauseToggle: (() -> Void)?
     private(set) var forwarded = 0
 
     var isRunning: Bool { tap != nil }
@@ -47,10 +49,14 @@ final class ShortcutTap {
             if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }
             return Unmanaged.passUnretained(event)
         }
-        guard isActive() else { return Unmanaged.passUnretained(event) }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
         let escape: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+        if code == UInt16(kVK_ANSI_Z), flags.contains(escape), type == .keyDown || type == .keyUp {
+            if type == .keyDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 { onPauseToggle?() }
+            return nil
+        }
+        guard isActive() else { return Unmanaged.passUnretained(event) }
         if type == .keyDown, code == UInt16(kVK_ANSI_Q), flags.contains(escape) {
             onEscape?()
             return nil
@@ -74,6 +80,14 @@ final class ShortcutTap {
             key(k, true, .maskCommand); key(k, false, .maskCommand)
             key(kVK_Command, false, [])
         }
+    }
+
+    /// Self-test: posts the pause combination.
+    static func postPause() {
+        let src = CGEventSource(stateID: .hidSystemState)
+        let f: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+        let d = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: true); d?.flags = f; d?.post(tap: .cghidEventTap)
+        let u = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: false); u?.flags = f; u?.post(tap: .cghidEventTap)
     }
 
     /// Self-test: posts the escape combination.

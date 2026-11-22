@@ -25,7 +25,14 @@ final class VideoClient {
         self.key = key; self.host = host; self.port = port
     }
 
+    /// Before the first handshake, failed attempts are retried until this deadline
+    /// (macOS may briefly report "Network is down" while it re-checks a rebuilt app).
+    var retryUntil: Date?
+    private(set) var attempts = 0
+
     func connect() {
+        if retryUntil == nil { retryUntil = Date().addingTimeInterval(8) }
+        attempts += 1
         let params = LinkSecurity.parameters(key: key)
         let nw = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: params)
         let c = FramedConnection(nw, maxMessage: WireProtocol.maxVideoMessage, queue: queue)
@@ -65,8 +72,14 @@ final class VideoClient {
             }
         }
         c.onClose = { [weak self] reason in
-            self?.log("{\"event\":\"disconnected\",\"reason\":\"\(reason)\"}")
-            self?.onClosed?(reason)
+            guard let self else { return }
+            if !self.handshakeDone, let until = self.retryUntil, Date() < until, !reason.contains("bye") {
+                self.log("{\"event\":\"connect_retry\",\"attempt\":\(self.attempts),\"reason\":\"\(reason)\"}")
+                self.queue.asyncAfter(deadline: .now() + 0.5) { self.connect() }
+                return
+            }
+            self.log("{\"event\":\"disconnected\",\"reason\":\"\(reason)\"}")
+            self.onClosed?(reason)
         }
         c.start()
     }

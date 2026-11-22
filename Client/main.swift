@@ -20,6 +20,7 @@ import Shared
 //   --no-tap                don't capture system shortcuts (Cmd-Tab...) with the event tap
 //   --test-shortcuts        post Cmd-Tab + Cmd-Space on the iMac after connecting (M7 test)
 //   --test-escape <s>       post Ctrl-Option-Cmd-Q after N seconds (M7 test)
+//   --test-pause            post Ctrl-Option-Cmd-Z twice (pause, resume) after connecting
 //   --mouse-script <spec>   click/scroll host targets "nx,ny;..." (M6 test)
 //   --host <ip> --key <path>
 
@@ -156,6 +157,23 @@ func escapeHatch() {
     inputClient?.disconnect(.escapeHatch)
     client.disconnect(.escapeHatch) { DispatchQueue.main.async { finish(code: 0, reason: "escape hatch") } }
 }
+// Pause: Ctrl-Option-Cmd-Z hides the mirror (iMac usable), pressing it again brings it back.
+var paused = false
+func togglePause() {
+    paused.toggle()
+    if paused {
+        // The combo's modifiers were already forwarded: clear them on the host.
+        inputClient?.send(InputEvent(kind: .flagsChanged, flags: 0, code: 0x37))
+        display.hide()
+    } else {
+        display.show()
+        client.requestKeyframe()
+    }
+    print("{\"event\":\"\(paused ? "paused" : "resumed")\"}")
+}
+display.inputView.onPauseToggle = togglePause
+tap.onPauseToggle = { DispatchQueue.main.async { togglePause() } }
+
 // Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
 display.inputView.onEscape = escapeHatch
 tap.onEscape = { DispatchQueue.main.async { escapeHatch() } }
@@ -198,6 +216,16 @@ func runMouseScript(_ spec: String) {
 inputClient?.onReady = {
     if flag("--test-shortcuts") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { ShortcutTap.postTestShortcuts() }
+    }
+    if flag("--test-pause") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { ShortcutTap.postPause() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            print("{\"event\":\"pause_check\",\"window_visible\":\(display.window.isVisible)}")
+            ShortcutTap.postPause()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            print("{\"event\":\"resume_check\",\"window_visible\":\(display.window.isVisible)}")
+        }
     }
     if let d = num("--test-escape") {
         DispatchQueue.main.asyncAfter(deadline: .now() + d) { ShortcutTap.postEscape() }

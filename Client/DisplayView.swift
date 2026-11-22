@@ -60,6 +60,13 @@ final class DisplayWindow {
 
     func close() { NSCursor.unhide(); window.orderOut(nil) }
 
+    /// Pause: hide the mirror and give the iMac back (connection stays up).
+    func hide() {
+        NSCursor.unhide()
+        window.orderOut(nil)
+        NSApp.hide(nil)
+    }
+
     /// Enqueues a decoded frame for immediate display.
     func display(_ pb: CVPixelBuffer) {
         lock.lock(); lastFrame = pb; lock.unlock()

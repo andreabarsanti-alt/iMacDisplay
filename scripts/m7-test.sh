@@ -4,6 +4,7 @@
 #  1. Cmd-Tab and Cmd-Space typed on the iMac reach the host (view-only host logs them)
 #  2. Ctrl-Option-Cmd-Q on the iMac ends the session cleanly within 2 s; host stops too
 #  3. cursor overlay receives shape + positions
+#  4. Ctrl-Option-Cmd-Z hides the mirror and shows it again, connection kept
 set -uo pipefail
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
@@ -43,6 +44,16 @@ grep -q '"escape_hatch"' logs/host-m7b.log && pass "host saw escape_hatch bye" |
 grep -q '"stopping"' logs/host-m7b.log && pass "host stopped" || fail "host did not stop"
 pgrep -f "RemoteMirrorHost --serve" >/dev/null && fail "host still running" || pass "no host process left"
 ssh "$IMAC" 'pgrep -f RemoteMirrorClient' >/dev/null && fail "client still running" || pass "no client process left"
+
+echo "== 4. Pause / resume"
+.build/debug/RemoteMirrorHost --serve --synthetic --view-only --duration 20 > logs/host-m7c.log 2>&1 &
+HPID=$!; sleep 2
+scripts/run-client.sh --duration 6 --test-pause > logs/client-m7c.log 2>&1
+wait $HPID
+grep -E '"paused"|"resumed"|_check' logs/client-m7c.log
+grep -q '"pause_check","window_visible":false' logs/client-m7c.log && pass "mirror hidden while paused" || fail "mirror not hidden on pause"
+grep -q '"resume_check","window_visible":true' logs/client-m7c.log && pass "mirror back after resume" || fail "mirror not back after resume"
+grep -q '"reason":"duration elapsed"' logs/client-m7c.log && pass "connection kept through pause" || fail "connection dropped during pause"
 
 echo
 [ $FAILS -eq 0 ] && { echo "M7: PASS"; exit 0; } || { echo "M7: FAIL ($FAILS)"; exit 1; }

@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M7 done (tag `m7`). Human checkpoint: feel test (typing, mouse, shortcuts, escape hatch) with `scripts/session.sh`. Next: M8 clipboard, reconnect, status items. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M7 done (tag `m7`). Feel test passed (human: "Feels great", 2026-11-22). Next: M8 clipboard, reconnect, status items. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- M7 + pause (`scripts/m7-test.sh`): all 13 checks pass, incl. pause hides the mirror, resume brings it back, connection kept.
 - M7 (`scripts/m7-test.sh`): event tap running on the iMac; Cmd-Tab and Cmd-Space typed on the iMac reached the host with the Cmd flag; cursor shape delivered; escape hatch ended the session cleanly on both sides (no processes left).
 - M6 (`scripts/m6-test.sh`, real screen capture): 25 events; 7 clicks (5 left, 1 right, 1 double) all on target, max error 0.00 pt; 5 scroll events, total dy -150.
 - M5 (`scripts/m5-test.sh`, run twice): 60 key events incl. Shift, field = "Hello World 2026 ciao Mondo" exactly. Dead man's switch (`--dead-man 1`): injection stopped, 0 events, field empty. Escape hatch Ctrl-Option-Cmd-Q implemented on the client (tested in M7).
@@ -61,6 +62,9 @@ All pass except link speed:
 
 - **Cursor overlay:** host polls position (120 Hz) and shape (10 Hz) and sends them on the video connection; the client draws the cursor and follows its own mouse instantly, using the host position when the MacBook trackpad moves it. Video no longer contains the cursor (`--video-cursor` to restore).
 - **Shortcut capture:** a CGEventTap at HID level on the iMac swallows all key events while the mirror window is active and forwards them; Ctrl-Option-Cmd-Q is handled in the tap too.
+
+- **Pause toggle (human request):** Ctrl-Option-Cmd-Z hides the mirror and gives the iMac back without disconnecting; same combo brings it back (handled in the event tap, so it works while hidden). Modifiers are cleared on the host when pausing.
+- **Initial connect retry:** the first launch after an app rebuild can get ENETDOWN while macOS re-checks Local Network permission; the client retries for up to 8 s before giving up.
 
 ## Blockers
 
