@@ -7,6 +7,7 @@
 #  C. without the flag (Mutual kill): killing the host makes the client quit.
 #  D. with the flag, the escape hatch still stops the host.
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 IMAC="${IMAC_USER:-andrea}@${IMAC_IP:-10.77.0.2}"

@@ -6,6 +6,7 @@
 #  3. cursor overlay receives shape + positions
 #  4. Ctrl-Option-Cmd-Z hides the mirror and shows it again, connection kept
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 IMAC="${IMAC_USER:-andrea}@${IMAC_IP:-10.77.0.2}"

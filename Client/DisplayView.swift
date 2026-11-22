@@ -71,7 +71,11 @@ final class DisplayWindow {
     func display(_ pb: CVPixelBuffer) {
         lock.lock(); lastFrame = pb; lock.unlock()
         let size = CGSize(width: CVPixelBufferGetWidth(pb), height: CVPixelBufferGetHeight(pb))
-        if inputView.videoSize != size { inputView.videoSize = size }
+        if inputView.videoSize != size {
+            if inputView.videoSize.width > 16 { print("{\"event\":\"video_size\",\"width\":\(Int(size.width)),\"height\":\(Int(size.height))}") }
+            inputView.videoSize = size
+            layoutCursor()
+        }
         var fmt: CMVideoFormatDescription?
         CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pb, formatDescriptionOut: &fmt)
         guard let fmt else { return }

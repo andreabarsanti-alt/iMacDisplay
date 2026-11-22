@@ -25,6 +25,9 @@ import HostCore
 //     --video-cursor  draw the cursor into the video instead of the client overlay
 //     --latency       show the M4 latency marker; print median/p95 on exit
 //     --view-only     don't inject keyboard/mouse events from the iMac
+//     --display auto|builtin|external   which display to share (default auto)
+//     --no-fit        don't switch an external display to 16:9 for the iMac
+//     --test-resize-after <s>  switch capture size mid-session (M13 test)
 //     --log-input     print every input event received (JSON)
 //     --allow-reconnect  keep listening when the client drops (escape hatch still stops)
 //     --dead-man <s>  stop injecting input after N seconds (tests)
@@ -193,6 +196,10 @@ if flag("--serve") {
     if let i = args.firstIndex(of: "--allow-peer"), i + 1 < args.count { cfg.allowedPeer = args[i + 1] }
     if let i = args.firstIndex(of: "--bind"), i + 1 < args.count { cfg.bindHost = args[i + 1] }
     if let i = args.firstIndex(of: "--simulate-missing"), i + 1 < args.count { cfg.simulateMissingPermission = args[i + 1] }
+    if let i = args.firstIndex(of: "--display"), i + 1 < args.count {
+        cfg.displayChoice = ["builtin": .builtin, "external": .external][args[i + 1]] ?? .automatic
+    }
+    cfg.fitExternalForIMac = !flag("--no-fit")
     let session = HostSession(config: cfg)
 
     // Test windows and hooks (CLI only).
@@ -282,6 +289,9 @@ if flag("--serve") {
         }
     }
     if printStats { startStatsTimer(session.stats) }
+    if let i = args.firstIndex(of: "--test-resize-after"), i + 1 < args.count, let d = Double(args[i + 1]) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + d) { Task { @MainActor in await session.debugToggleCaptureSize() } }
+    }
     if let i = args.firstIndex(of: "--duration"), i + 1 < args.count, let d = Double(args[i + 1]) {
         DispatchQueue.main.asyncAfter(deadline: .now() + d) { stopAll("duration elapsed", code: 0) }
     }

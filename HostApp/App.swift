@@ -51,6 +51,13 @@ struct MenuContent: View {
         Divider()
         Toggle("Allow keyboard & mouse control", isOn: $model.allowControl)
             .disabled(model.state.isActive)
+        Picker("Share display", selection: $model.displayChoice) {
+            ForEach(DisplayChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        .disabled(model.state.isActive)
+        Toggle("Fit external display to iMac (16:9)", isOn: $model.fitForIMac)
+            .disabled(model.state.isActive)
+        if !model.displaysLine.isEmpty { Text(model.displaysLine) }
         Picker("Quality", selection: $model.quality) {
             ForEach(HostAppModel.Quality.allCases) { Text($0.rawValue).tag($0) }
         }

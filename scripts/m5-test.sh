@@ -3,6 +3,7 @@
 # a scripted sequence (hardware keycodes, incl. Shift); the field must match exactly.
 # Also checks the dead man's switch is armed and keys are released on stop.
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 IMAC="${IMAC_USER:-andrea}@${IMAC_IP:-10.77.0.2}"

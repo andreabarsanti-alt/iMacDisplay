@@ -21,6 +21,9 @@ final class HostAppModel: ObservableObject {
     @Published private(set) var accessibility = HostPermissions.accessibility()
     @Published var allowControl: Bool { didSet { UserDefaults.standard.set(allowControl, forKey: "allowControl") } }
     @Published var quality: Quality { didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") } }
+    @Published var displayChoice: DisplayChoice { didSet { UserDefaults.standard.set(displayChoice.rawValue, forKey: "display") } }
+    @Published var fitForIMac: Bool { didSet { UserDefaults.standard.set(fitForIMac, forKey: "fitForIMac") } }
+    @Published private(set) var displaysLine = ""
 
     private(set) var session: HostSession?
     private var timer: Timer?
@@ -36,6 +39,8 @@ final class HostAppModel: ObservableObject {
     init() {
         allowControl = UserDefaults.standard.object(forKey: "allowControl") as? Bool ?? true
         quality = Quality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .lowLatency
+        displayChoice = DisplayChoice(rawValue: UserDefaults.standard.string(forKey: "display") ?? "") ?? .automatic
+        fitForIMac = UserDefaults.standard.object(forKey: "fitForIMac") as? Bool ?? true
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -70,6 +75,8 @@ final class HostAppModel: ObservableObject {
         cfg.synthetic = synthetic
         cfg.bindHost = bindHost
         cfg.simulateMissingPermission = simulateMissingPermission
+        cfg.displayChoice = displayChoice
+        cfg.fitExternalForIMac = fitForIMac
         let s = HostSession(config: cfg)
         s.log = log
         s.onState = { [weak self] st in Task { @MainActor in self?.state = st } }
@@ -87,6 +94,9 @@ final class HostAppModel: ObservableObject {
     // MARK: Status and checks
 
     private func tick() {
+        let all = Displays.current()
+        let shared = session.flatMap { $0.state.isActive ? $0.sharedDisplay : nil }
+        displaysLine = all.map { ($0.id == shared ? "▶︎ " : "") + $0.label }.joined(separator: " · ")
         screenRecording = HostPermissions.screenRecording()
         accessibility = HostPermissions.accessibility()
         guard let s = session else { statsLine = ""; return }

@@ -9,6 +9,7 @@ public final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     private let onFrame: (CVPixelBuffer, CMTime) -> Void
     private let onError: (String) -> Void
     public private(set) var width = 0, height = 0
+    public private(set) var displayID: CGDirectDisplayID = 0
 
     public init(onFrame: @escaping (CVPixelBuffer, CMTime) -> Void, onError: @escaping (String) -> Void) {
         self.onFrame = onFrame; self.onError = onError
@@ -16,10 +17,10 @@ public final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Picks the main display. `nativePixels` captures at the panel's pixel size (Retina),
     /// otherwise at its point size. Sizes are capped to `maxWidth` and forced even.
-    public func start(fps: Int32, nativePixels: Bool = true, showsCursor: Bool = true, maxWidth: Int? = nil) async throws {
+    public func start(fps: Int32, displayID: CGDirectDisplayID? = nil, nativePixels: Bool = true, showsCursor: Bool = true, maxWidth: Int? = nil) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let mainID = CGMainDisplayID()
-        guard let display = content.displays.first(where: { $0.displayID == mainID }) ?? content.displays.first else {
+        let wanted = displayID ?? CGMainDisplayID()
+        guard let display = content.displays.first(where: { $0.displayID == wanted }) ?? content.displays.first else {
             throw NSError(domain: "Capture", code: 1, userInfo: [NSLocalizedDescriptionKey: "no display"])
         }
         var w = display.width, h = display.height
@@ -28,6 +29,7 @@ public final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         if let maxWidth, w > maxWidth { h = h * maxWidth / w; w = maxWidth }
         width = w & ~1; height = h & ~1
+        self.displayID = display.displayID
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()

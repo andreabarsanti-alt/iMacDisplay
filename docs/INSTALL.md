@@ -55,6 +55,10 @@ removes the pairing key and the signing identity, and restores the original
 network settings from the backup (asks for your password).
 Keep parts with `--keep-network`, `--keep-permissions`, `--keep-key`, `--keep-identity`.
 
+macOS offers no command to reset **Local Network** entries: after uninstalling, remove
+RemoteMirror by hand in System Settings > Privacy & Security > Local Network (iMac).
+On a development iMac there are two entries: the installed app and the test build.
+
 ## A second MacBook (same iMac)
 
 1. On the first MacBook: `./export-pairing.sh` (in the MacBook package) puts

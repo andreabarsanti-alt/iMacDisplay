@@ -1,6 +1,7 @@
 # Roadmap
 
-Done: M1-M12 (see `STATUS.md`). Planned next:
+Done: M1-M12 (see `STATUS.md`). M13 in progress: everything that works without the
+plug is built and tested (`scripts/m13-test.sh`); the lid-closed run waits for the plug.
 
 ## M13: lid closed (clamshell) with an HDMI dummy plug
 
@@ -11,7 +12,17 @@ MacBook Pro's HDMI port; MacBook on its charger.
 The dummy plug is that display, and it gives the host something to capture while
 the built-in screen is off.
 
-**Work:**
+**Built (2026-11-22, without the plug):** display choice (Automatic / Built-in /
+External; Automatic = external when present) in the menu bar app and `--display`;
+"Fit external display to iMac (16:9)" picks 2560x1440 HiDPI or the largest 16:9 HiDPI
+mode; live capture switching on display changes (CGDisplay reconfiguration callback,
+capture-lost recovery) without ending the session; input and cursor follow the shared
+display. Test: mid-session switch in ~60 ms, iMac continues at 57 fps, clicks exact.
+
+**Still to verify with the plug:** lid-closed 30 min run, the 16:9 mode on the real
+dummy, the switch when the lid actually closes, latency at 5120x2880.
+
+**Work (original plan):**
 - Host: choose the display to share (Preferences > Display: built-in / dummy /
   automatic). Automatic = the dummy when the lid is closed, otherwise the built-in.
 - Set the dummy to a 16:9 HiDPI mode matching the iMac 5K (2560x1440 HiDPI ->

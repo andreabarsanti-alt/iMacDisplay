@@ -5,6 +5,7 @@
 # latency per sample and reports median / p95.
 # Not included: the iMac panel's own scan-out (up to ~1 refresh, 16.7 ms).
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 IMAC="${IMAC_USER:-andrea}@${IMAC_IP:-10.77.0.2}"

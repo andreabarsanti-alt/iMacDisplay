@@ -8,6 +8,7 @@
 #  6. escape hatch on the iMac ends the session: client idle, host stopped
 #  7. quit from the client ends the app
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 IMAC="${IMAC_USER:-andrea}@${IMAC_IP:-10.77.0.2}"

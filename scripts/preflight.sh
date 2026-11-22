@@ -8,6 +8,7 @@
 # Overrides: IMAC_USER (andrea), IMAC_IP (10.77.0.2), HOST_IP (10.77.0.1),
 #            IMAC_REPO (~/iMacDisplay on the iMac)
 set -uo pipefail
+export LC_ALL=C   # decimal points, not commas, in awk/printf
 cd "$(dirname "$0")/.."
 
 IMAC_USER="${IMAC_USER:-andrea}"

@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M12 done (tag `m12`): packaged install/uninstall (`packaging/`, guide in `docs/INSTALL.md`). Both Macs now run the installed apps from `~/Applications`. Remaining: optional M13 (lid closed).
+**Current milestone:** M12 done (tag `m12`), releases v1.0 / v1.0.1 on GitHub. M13 (lid closed) built and tested as far as possible without the HDMI dummy plug; lid-closed verification pending the plug.
 
 ## Machines
 
@@ -31,6 +31,8 @@ All pass except link speed:
 
 ## Last test results
 
+- M13 without plug (`scripts/m13-test.sh`): display policy + 16:9 mode unit tests (38 total); mid-session capture switch 3024x1964 -> 1512x982, iMac continued at 57.4 fps to the end; clicks exact after a switch. Regression M3/M4/M6/M8/M10/M11 passes (M4 median 34.6 / p95 43.0 ms).
+- Second MacBook: installed from the v1.0 release; installer adapter name problem fixed in v1.0.1 (auto-detect).
 - M12: packages built on the MacBook (arm64 host app, x86_64 client cross-built). Sandbox-home install/uninstall on the MacBook (files, key, identity removal) found and fixed 3 installer bugs (signing failure not detected; `| grep -q` under pipefail; keychain search list edge case). Real install on both Macs with `--skip-network`: permissions carried over; installed apps pass 3 start/stop cycles with the iMac connected; real uninstall/reinstall on the iMac (app, login item, process removed; kept items kept).
 - **Full uninstall + reinstall on the iMac (human-run, 2026-11-22):** uninstall removed app, login item, permission entry, key and identity and restored the cable interface to DHCP from the backup; install set 10.77.0.2 again with a new backup. The first install run stopped at the pairing step (pairing file missing) after already changing the network, so the installer now checks for the pairing file before touching anything. Completed with a fresh pairing file: new identity, key fingerprint matches the MacBook, Accessibility + Local Network re-granted by the human, 3/3 session cycles pass.
 - M11 (`scripts/m11-test.sh`): idle window at launch; full screen 1.6 s after the host starts with no action on the iMac; back to idle after host stop, after a second session, and after the host is killed (1 s); escape hatch ends the session and stops the host; quit ends the app. Full regression M3-M10 passes after the client restructuring.

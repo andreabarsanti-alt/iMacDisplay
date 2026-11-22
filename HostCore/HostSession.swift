@@ -23,6 +23,10 @@ public final class HostSession {
         public var deadManSeconds: Double?
         public var bindHost = WireProtocol.hostAddress
         public var allowedPeer = WireProtocol.clientAddress
+        /// Which display to share; `automatic` follows the lid (external when present).
+        public var displayChoice: DisplayChoice = .automatic
+        /// Switch an external display (HDMI dummy) to a 16:9 HiDPI mode that fills the iMac.
+        public var fitExternalForIMac = true
         /// Test hook: pretend a permission is missing ("screen_recording" / "accessibility").
         public var simulateMissingPermission: String?
         public init(key: Data) { self.key = key }
@@ -65,6 +69,13 @@ public final class HostSession {
     private var needKeyframe = false
     private var escapeRequested = false
     private var stopCompletions: [() -> Void] = []
+    private var nativePixels = true
+    private var switching = false
+    private var displayCheckPending = false
+    private var reconfigRegistered = false
+    /// Display currently shared (0 while synthetic).
+    public var sharedDisplay: CGDirectDisplayID { capturer?.displayID ?? 0 }
+    public private(set) var displaySwitches = 0
 
     public init(config: Config) {
         self.config = config
@@ -100,13 +111,9 @@ public final class HostSession {
                 synth = s
                 width = Int32(s.width); height = Int32(s.height)
             } else {
-                let c = ScreenCapturer(onFrame: { [weak self] pb, pts in self?.onFrame(pb, pts) },
-                                       onError: { [weak self] e in DispatchQueue.main.async { self?.fail(.capture(e)) } })
-                capturer = c
-                do {
-                    try await c.start(fps: config.fps, nativePixels: config.nativePixels, showsCursor: config.videoCursor)
-                } catch { throw StartError.capture(error.localizedDescription) }
-                width = Int32(c.width); height = Int32(c.height)
+                nativePixels = config.nativePixels
+                do { try await startCapture(on: pickDisplay()) } catch { throw StartError.capture(error.localizedDescription) }
+                registerDisplayWatch()
             }
             encoder = try VideoEncoder(width: width, height: height, fps: config.fps, bitrate: config.bitrate,
                                        codec: config.codec) { [weak self] out in self?.onEncoded(out) }
@@ -117,6 +124,8 @@ public final class HostSession {
             synth?.start { [weak self] pb, pts in self?.onFrame(pb, pts) }
             if !config.videoCursor {
                 let t = CursorTracker()
+                t.displayID = sharedDisplay == 0 ? CGMainDisplayID() : sharedDisplay
+                t.onVisibility = { [weak self] x, y, v in self?.server.sendControl(.cursor(x: x, y: y, visible: v)) }
                 t.onPosition = { [weak self] x, y in self?.server.sendControl(.cursor(x: x, y: y, visible: true)) }
                 t.onShape = { [weak self] s in self?.server.sendControl(.cursorShape(s)) }
                 t.start()
@@ -184,6 +193,111 @@ public final class HostSession {
         }
     }
 
+    // MARK: Display selection and live switching (M13)
+
+    private func pickDisplay() -> DisplayInfo? { Displays.choose(Displays.current(), config.displayChoice) }
+
+    /// Starts capture on `display` (fitting an external one to 16:9 first) and points
+    /// input, cursor and size at it. Caller must have stopped any previous capture.
+    @MainActor
+    private func startCapture(on display: DisplayInfo?) async throws {
+        if config.fitExternalForIMac, let d = display, !d.isBuiltin, let changed = Displays.fitForIMac(d.id) {
+            log("{\"event\":\"display_mode\",\"display\":\(d.id),\"mode\":\"\(changed)\"}")
+            try? await Task.sleep(nanoseconds: 800_000_000)   // let the mode change settle
+        }
+        let c = ScreenCapturer(onFrame: { [weak self] pb, pts in self?.onFrame(pb, pts) },
+                               onError: { [weak self] e in
+                                   // The display may have gone away (lid closed): try another before failing.
+                                   DispatchQueue.main.async { self?.captureLost(e) }
+                               })
+        try await c.start(fps: config.fps, displayID: display?.id, nativePixels: nativePixels, showsCursor: config.videoCursor)
+        capturer = c
+        width = Int32(c.width); height = Int32(c.height)
+        injector.displayID = c.displayID
+        cursor?.displayID = c.displayID
+        let label = Displays.current().first { $0.id == c.displayID }?.label ?? "display \(c.displayID)"
+        log("{\"event\":\"capturing\",\"display\":\(c.displayID),\"label\":\"\(label)\",\"width\":\(width),\"height\":\(height)}")
+    }
+
+    /// Restarts capture (new display or new size) without ending the session: the iMac
+    /// gets a keyframe at the new size and simply continues.
+    @MainActor
+    private func restartCapture(on display: DisplayInfo?, reason: String) async {
+        guard state.isActive, !config.synthetic, !switching else { return }
+        switching = true
+        defer { switching = false }
+        let t0 = Date()
+        let old = capturer
+        capturer = nil
+        let oldEncoder = encoder
+        encoder = nil                       // frames arriving meanwhile are dropped
+        if let old { await old.stop() }
+        oldEncoder?.invalidate()
+        do {
+            try await startCapture(on: display)
+            encoder = try VideoEncoder(width: width, height: height, fps: config.fps, bitrate: config.bitrate,
+                                       codec: config.codec) { [weak self] out in self?.onEncoded(out) }
+            displaySwitches += 1
+            log(String(format: "{\"event\":\"display_switched\",\"reason\":\"%@\",\"width\":%d,\"height\":%d,\"ms\":%.0f}",
+                       reason, width, height, Date().timeIntervalSince(t0) * 1000))
+            cursor?.resend()
+        } catch {
+            fail(.capture("could not restart capture: \(error.localizedDescription)"))
+        }
+    }
+
+    private func captureLost(_ e: String) {
+        guard state.isActive, !switching else { return }
+        log("{\"event\":\"capture_lost\",\"reason\":\"\(e)\"}")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard self.state.isActive else { return }
+            guard let d = self.pickDisplay() else { self.fail(.capture("no display left to share")); return }
+            Task { @MainActor in await self.restartCapture(on: d, reason: "capture lost") }
+        }
+    }
+
+    /// Called (debounced) when displays are added/removed/reconfigured.
+    private func checkDisplays() {
+        displayCheckPending = false
+        guard state.isActive, !config.synthetic, !switching, let c = capturer else { return }
+        guard let want = pickDisplay() else { return }
+        let px = nativePixels ? (want.pixelWidth & ~1, want.pixelHeight & ~1) : (want.width & ~1, want.height & ~1)
+        if want.id != c.displayID || px.0 != c.width || px.1 != c.height {
+            Task { @MainActor in await self.restartCapture(on: want, reason: want.id != c.displayID ? "display changed" : "resolution changed") }
+        }
+    }
+
+    /// One C callback for register and remove (removal needs the identical pointer).
+    private static let reconfigCallback: CGDisplayReconfigurationCallBack = { _, flags, ctx in
+        guard let ctx, !flags.contains(.beginConfigurationFlag) else { return }
+        let session = Unmanaged<HostSession>.fromOpaque(ctx).takeUnretainedValue()
+        DispatchQueue.main.async {
+            guard !session.displayCheckPending else { return }
+            session.displayCheckPending = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { session.checkDisplays() }
+        }
+    }
+
+    private func registerDisplayWatch() {
+        guard !reconfigRegistered else { return }
+        reconfigRegistered = true
+        CGDisplayRegisterReconfigurationCallback(Self.reconfigCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    private func unregisterDisplayWatch() {
+        guard reconfigRegistered else { return }
+        reconfigRegistered = false
+        CGDisplayRemoveReconfigurationCallback(Self.reconfigCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    /// Test hook: switch capture size mid-session (native pixels <-> points) through the
+    /// same path as a display change.
+    @MainActor
+    public func debugToggleCaptureSize() async {
+        nativePixels.toggle()
+        await restartCapture(on: Displays.current().first { $0.id == sharedDisplay } ?? pickDisplay(), reason: "test resize")
+    }
+
     // MARK: Frames
 
     private func onFrame(_ pb: CVPixelBuffer, _ pts: CMTime) {
@@ -233,6 +347,7 @@ public final class HostSession {
     /// Order matters: input first (no stuck keys), then capture, then say bye and close.
     @MainActor
     private func teardown() async {
+        unregisterDisplayWatch()
         injector.stop()
         cursor?.stop(); cursor = nil
         synth?.stop(); synth = nil

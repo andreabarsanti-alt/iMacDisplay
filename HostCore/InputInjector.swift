@@ -52,9 +52,14 @@ public final class InputInjector {
         injectedCount += 1
     }
 
+    /// The display being shared; mouse coordinates are relative to it.
+    public var displayID: CGDirectDisplayID = CGMainDisplayID()
+
     /// Normalized video coordinates (origin top-left) -> global display points.
-    public static func displayPoint(nx: Float32, ny: Float32) -> CGPoint {
-        let b = CGDisplayBounds(CGMainDisplayID())
+    public func displayPoint(nx: Float32, ny: Float32) -> CGPoint { Self.displayPoint(nx: nx, ny: ny, display: displayID) }
+
+    public static func displayPoint(nx: Float32, ny: Float32, display: CGDirectDisplayID = CGMainDisplayID()) -> CGPoint {
+        let b = CGDisplayBounds(display)
         let x = b.minX + CGFloat(min(max(nx, 0), 1)) * b.width
         let y = b.minY + CGFloat(min(max(ny, 0), 1)) * b.height
         // Keep inside the display (the far edge itself is off-screen).
@@ -62,7 +67,7 @@ public final class InputInjector {
     }
 
     private func injectMouse(_ e: InputEvent) {
-        let p = Self.displayPoint(nx: e.x, ny: e.y)
+        let p = displayPoint(nx: e.x, ny: e.y)
         lastPoint = p
         let button = Int(e.code & 0xff), clicks = Int(e.code >> 8)
         let cgButton: CGMouseButton = button == 0 ? .left : button == 1 ? .right : .center
@@ -91,7 +96,7 @@ public final class InputInjector {
         let precise = e.code == 1
         guard let ev = CGEvent(scrollWheelEvent2Source: source, units: precise ? .pixel : .line, wheelCount: 2,
                                wheel1: Int32(e.dy.rounded()), wheel2: Int32(e.dx.rounded()), wheel3: 0) else { return }
-        ev.location = Self.displayPoint(nx: e.x, ny: e.y)
+        ev.location = displayPoint(nx: e.x, ny: e.y)
         ev.flags = CGEventFlags(rawValue: UInt64(e.flags))
         ev.post(tap: .cghidEventTap)
     }
