@@ -1,16 +1,29 @@
+import AppKit
 import Foundation
 import Shared
 
-// RemoteMirrorClient: runs on the iMac (x86_64). Receive/display/input capture arrive in M3+.
-let args = CommandLine.arguments.dropFirst()
+// RemoteMirrorClient: runs on the iMac (x86_64).
+//
+//   --verify-vectors        check protocol vectors from the host (stdin)
+//   --video-caps            hardware codec support as JSON
+//   --duration <s>          quit after N seconds (test mode); default: run until disconnected
+//   --stats                 JSON stats line every second
+//   --dump-frame <path>     write the last displayed frame as PNG on exit
+//   --windowed              960x600 window instead of full screen
+//   --hevc                  expect HEVC instead of H.264
+//   --min-fps <n>           exit 1 if average displayed fps is below n (with --duration)
+//   --host <ip> --key <path>
 
-if args.contains("--video-caps") {
-    print(VideoCapabilities.json())
-    exit(0)
+let args = Array(CommandLine.arguments.dropFirst())
+func flag(_ n: String) -> Bool { args.contains(n) }
+func str(_ n: String) -> String? {
+    guard let i = args.firstIndex(of: n), i + 1 < args.count else { return nil }
+    return args[i + 1]
 }
+func num(_ n: String) -> Double? { str(n).flatMap(Double.init) }
 
-if args.contains("--verify-vectors") {
-    // Reads hex lines emitted by the Host on another machine from stdin.
+if flag("--video-caps") { print(VideoCapabilities.json()); exit(0) }
+if flag("--verify-vectors") {
     let input = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
     let failures = TestVectors.verify(input)
     if failures.isEmpty {
@@ -21,4 +34,67 @@ if args.contains("--verify-vectors") {
     exit(1)
 }
 
+setvbuf(stdout, nil, _IOLBF, 0)
 print(BuildInfo.banner("RemoteMirrorClient"))
+
+let key: Data
+do { key = try LinkSecurity.loadKey(path: str("--key") ?? LinkSecurity.defaultKeyPath) } catch {
+    print("FAIL: \(error)"); exit(1)
+}
+
+let app = NSApplication.shared
+app.setActivationPolicy(.regular)
+let stats = ClientStats()
+let display = DisplayWindow(windowed: flag("--windowed"))
+let hevc = flag("--hevc")
+let client = VideoClient(key: key, host: str("--host") ?? WireProtocol.hostAddress)
+var keyframeRequested = false
+let decoder = VideoDecoder { pb, _, nanos in
+    stats.frameDecoded(nanos: nanos)
+    DispatchQueue.main.async { display.display(pb); stats.frameDisplayed() }
+}
+decoder.onError = { e in stats.decodeError(); print("{\"event\":\"decode_error\",\"error\":\"\(e)\"}") }
+
+func finish(code: Int32, reason: String) -> Never {
+    if let path = str("--dump-frame") {
+        print(display.dumpFrame(to: path) ? "{\"event\":\"dumped\",\"path\":\"\(path)\"}"
+                                          : "{\"event\":\"dump_failed\",\"reason\":\"no frame\"}")
+    }
+    display.close()
+    let s = stats.summary()
+    print(s.json)
+    var code = code
+    if let minFps = num("--min-fps"), s.displayFps < minFps {
+        print(String(format: "FAIL: average display fps %.1f < %.0f", s.displayFps, minFps)); code = 1
+    }
+    print("{\"event\":\"exit\",\"reason\":\"\(reason)\",\"hardware_decode\":\(decoder.usingHardware)}")
+    if code == 0 && num("--min-fps") != nil { print("PASS") }
+    exit(code)
+}
+
+client.onFrame = { f in
+    stats.frameReceived(bytes: f.payload.count)
+    if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc) {
+        if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
+    } else if f.isKeyframe { keyframeRequested = false }
+}
+client.onReady = { DispatchQueue.main.async { display.show() } }
+// Mutual kill: any disconnect ends the client (no auto-reconnect until M8's --allow-reconnect).
+client.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: reason) } }
+
+if flag("--stats") {
+    Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in print(stats.intervalJSON(seconds: 1)) }
+}
+if let d = num("--duration") {
+    DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+        client.onClosed = nil
+        client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "duration elapsed") } }
+    }
+}
+signal(SIGTERM, SIG_IGN)
+let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+sigterm.setEventHandler { client.onClosed = nil; client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "SIGTERM") } } }
+sigterm.resume()
+
+client.connect()
+app.run()

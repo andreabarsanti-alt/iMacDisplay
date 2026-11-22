@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M1 done (tag `m1`). Waiting at **Gate 1** (link speed) and **Gate 2** (permissions) before M2.
+**Current milestone:** M3 done (tag `m3`). Human checkpoint: look at the iMac mirror. Next: M4 latency harness. Accessibility (needed for M5) still `denied`.
 
 ## Machines
 
@@ -22,12 +22,17 @@ All pass except link speed:
 
 **Decision (2026-11-22):** human accepted 100 Mbps for now; cable upgrade later. Bitrate must stay well under ~90 Mbps.
 
-## Gate 2: permissions — not started
+## Gate 2: permissions
 
-Needs a human at the MacBook for Screen Recording + Accessibility (before M2/M5), and possibly at the iMac.
+- Decision: permissions granted to **Terminal.app** (no signing identity on either Mac; processes started from Terminal inherit its TCC grants, so rebuilds don't reset them). Revisit with a real certificate for the M10 app.
+- MacBook Screen Recording: **granted** (works without restarting Terminal).
+- MacBook Accessibility: **denied** so far (needed from M5).
+- iMac: client runs over SSH, attaches to the logged-in GUI session; no prompts so far (no Local Network prompt either).
 
 ## Last test results
 
+- M3 (`scripts/m3-test.sh`): real screen 30 s → 29.5 fps displayed, HW decode 1.7 ms, 0 errors; client frame vs host screenshot similarity 0.974; mutual kill on client exit; wrong key, wrong source address (10.77.0.1) and plain TCP all rejected.
+- M2 (`RemoteMirrorHost --capture-test`): 28.9 fps, HW H.264 1512x982, encode 4.8 ms avg. `--encoder-test` (synthetic) passes for H.264 and HEVC.
 - M1: `scripts/test.sh` 16/16 pass on arm64 and x86_64; cross-machine check `RemoteMirrorHost --emit-vectors | ssh imac RemoteMirrorClient --verify-vectors` → PASS (10 vectors); tampered input rejected.
 
 ## Decisions
@@ -37,10 +42,14 @@ Needs a human at the MacBook for Screen Recording + Accessibility (before M2/M5)
 - **Repo reaches the iMac by `git push imac`** over the cable (no GitHub credentials needed on the iMac).
 - Protocol v1: `length u32 LE | type u8 | payload`, explicit LE, hard caps 8 MB (video) / 64 KB (control), decoder rejects oversized frames before buffering.
 
+- **PSK in a file, not Keychain (dev deviation):** `~/.imacdisplay/psk` (mode 600) on both Macs, installed by `scripts/install-key.sh`. Unsigned binaries would trigger Keychain access prompts on every rebuild. Move to Keychain with the signed M10 app.
+- `requiredInterfaceType = .wiredEthernet` removed: made the iMac connection fail with ENETDOWN. Binding to 10.77.0.1 + peer pinning to 10.77.0.2 keeps traffic on the cable.
+- **Firewall:** off on both, turned on by the human later with allow rules (unsigned rebuilds would re-prompt).
+- Client launched with plain `ssh` (`scripts/run-client.sh`); `launchctl asuser` needs root.
+
 ## Blockers
 
-- Gate 1 link speed (human).
-- Gate 2 permissions (human).
+- Accessibility for Terminal on the MacBook (human) before M5.
 
 ## Running (to clean up at end of session)
 

@@ -63,8 +63,10 @@ final class VideoEncoder {
         VTCompressionSessionPrepareToEncodeFrames(s)
 
         var hw: CFTypeRef?
-        if VTSessionCopyProperty(s, key: kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder,
-                                 allocator: nil, valueOut: &hw) == noErr {
+        let hwStatus = withUnsafeMutablePointer(to: &hw) {
+            VTSessionCopyProperty(s, key: kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder, allocator: nil, valueOut: $0)
+        }
+        if hwStatus == noErr {
             usingHardware = (hw as? Bool) ?? false
         }
     }

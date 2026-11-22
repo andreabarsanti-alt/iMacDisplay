@@ -14,6 +14,13 @@ import Shared
 //     --duration <s>  (10)  --fps <n> (30)  --bitrate <Mbps> (20)  --hevc
 //     --stats         print a JSON stats line every second
 //     --no-pattern    don't open the animated test-pattern window (capture-test)
+//   --compare <a.png> <b.png>      print image similarity 0...1
+//   --gen-key                      create ~/.imacdisplay/psk if missing (then scripts/install-key.sh)
+//   --serve                        listen on 10.77.0.1:5001 (TLS-PSK) and stream the screen to the iMac
+//     --synthetic     stream generated frames instead of the screen (no permission needed)
+//     --duration <s>  stop after N seconds (default: until the client disconnects)
+//     --pattern       also show the animated test-pattern window
+//     --allow-peer <ip>  override the pinned client address (tests only)
 
 let args = Array(CommandLine.arguments.dropFirst())
 func flag(_ name: String) -> Bool { args.contains(name) }
@@ -25,6 +32,13 @@ func value(_ name: String, _ def: Double) -> Double {
 if flag("--emit-vectors") { print(TestVectors.emit()); exit(0) }
 if flag("--video-caps") { print(VideoCapabilities.json()); exit(0) }
 if flag("--check-permissions") { HostPermissions.report().forEach { print($0) }; exit(0) }
+if let i = args.firstIndex(of: "--compare"), i + 2 < args.count {
+    guard let sim = ImageCompare.similarity(args[i + 1], args[i + 2]) else { print("FAIL: cannot read images"); exit(1) }
+    print(String(format: "{\"similarity\":%.4f}", sim)); exit(0)
+}
+if flag("--gen-key") {
+    do { print("key: \(try LinkSecurity.generateKey())"); exit(0) } catch { print("FAIL: \(error)"); exit(1) }
+}
 if flag("--request-permissions") {
     HostPermissions.request()
     HostPermissions.report().forEach { print($0) }
@@ -142,6 +156,94 @@ if flag("--capture-test") {
         finish(stats, encoder: encoder, extra: [("mode", "\"capture-test\""),
                                                 ("width", "\(capturer.width)"), ("height", "\(capturer.height)")])
     }
+    app.run()
+}
+
+if flag("--serve") {
+    setvbuf(stdout, nil, _IOLBF, 0)
+    print(BuildInfo.banner("RemoteMirrorHost"))
+    let key: Data
+    do { key = try LinkSecurity.loadKey() } catch { print("FAIL: \(error)"); exit(1) }
+    let synthetic = flag("--synthetic")
+    if !synthetic && !HostPermissions.screenRecording() {
+        print("FAIL: Screen Recording permission not granted (Gate 2)"); exit(2)
+    }
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let stats = HostStats()
+    var cfg = VideoServer.Config(key: key)
+    if let i = args.firstIndex(of: "--allow-peer"), i + 1 < args.count { cfg.allowedPeer = args[i + 1] }
+    let server = VideoServer(config: cfg)
+    var encoder: VideoEncoder?
+    var width: Int32 = 0, height: Int32 = 0
+    var needKeyframe = false
+    let pattern = flag("--pattern") ? TestPatternWindow() : nil
+
+    func onEncoded(_ out: VideoEncoder.Output) {
+        let frame = VideoFrame(ptsNanos: out.ptsNanos, flags: out.isKeyframe ? VideoFrame.keyframeFlag : 0,
+                               width: UInt16(width), height: UInt16(height), payload: out.annexB)
+        if server.send(frame) {
+            stats.frameEncoded(bytes: out.annexB.count, keyframe: out.isKeyframe, encodeNanos: out.encodeNanos)
+        } else {
+            stats.frameDropped()
+            needKeyframe = true   // never queue: drop and recover with a keyframe
+        }
+    }
+    func onFrame(_ pb: CVPixelBuffer, _ pts: CMTime) {
+        guard server.isStreaming, let encoder else { return }
+        stats.frameCaptured()
+        if needKeyframe { needKeyframe = false; encoder.requestKeyframe() }
+        encoder.encode(pb, pts: pts)
+    }
+    var stopping = false
+    func stopAll(_ why: String, code: Int32) {
+        guard !stopping else { return }
+        stopping = true
+        print("{\"event\":\"stopping\",\"reason\":\"\(why)\"}")
+        server.stop {
+            DispatchQueue.main.async {
+                encoder?.invalidate()
+                print(stats.summary(extra: [("mode", "\"serve\""), ("hardware", "\(encoder?.usingHardware ?? false)")]).json)
+                exit(code)
+            }
+        }
+    }
+    server.onKeyframeRequest = { encoder?.requestKeyframe() }
+    // Mutual kill: client gone (bye, close or heartbeat timeout) stops everything.
+    server.onClientGone = { why in DispatchQueue.main.async { stopAll("client gone: \(why)", code: 0) } }
+
+    let synth = synthetic ? SyntheticSource(fps: fps) : nil
+    let capturer = synthetic ? nil : ScreenCapturer(onFrame: onFrame, onError: { e in
+        DispatchQueue.main.async { stopAll(e, code: 1) }
+    })
+    Task { @MainActor in
+        do {
+            pattern?.show()
+            if let synth {
+                width = Int32(synth.width); height = Int32(synth.height)
+                synth.start(onFrame: onFrame)
+            } else if let capturer {
+                try await capturer.start(fps: fps)
+                width = Int32(capturer.width); height = Int32(capturer.height)
+            }
+            encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)
+            try server.start()
+        } catch {
+            print("FAIL: \(error)"); exit(1)
+        }
+    }
+    if printStats { startStatsTimer(stats) }
+    if let i = args.firstIndex(of: "--duration"), i + 1 < args.count, let d = Double(args[i + 1]) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + d) { stopAll("duration elapsed", code: 0) }
+    }
+    signal(SIGTERM, SIG_IGN); signal(SIGINT, SIG_IGN)
+    let sigs = [SIGTERM, SIGINT].map { sig -> DispatchSourceSignal in
+        let src = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+        src.setEventHandler { stopAll("signal \(sig)", code: 0) }
+        src.resume()
+        return src
+    }
+    _ = sigs
     app.run()
 }
 
