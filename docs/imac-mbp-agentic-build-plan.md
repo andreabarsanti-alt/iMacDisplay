@@ -96,7 +96,7 @@ The agent works through milestones in order, runs the acceptance test for each, 
 | M5 | Input forward (keyboard) | Agent runs a test text field on the MacBook; client test mode sends a scripted key sequence; host logs and the field content match exactly |
 | M6 | Input forward (mouse/scroll) | Scripted moves/clicks on a test window with known button rectangles; host test window logs hit positions within ±2 px after scaling |
 | M7 | Cursor overlay, shortcut capture, escape hatch | Scripted test of the escape combo releases capture and exits cleanly; shortcut test forwards Cmd-Tab events to the host log |
-| M8 | Clipboard sync, reconnect, status items | Kill/restart each side mid-session; with `--allow-reconnect`, reconnection within 3 s with a keyframe (without it, the apps stay stopped, per Mutual kill); clipboard text round-trips |
+| M8 | Reconnect, status items (clipboard sync dropped by decision, 2026-11-22: AirDrop for now) | Kill/restart each side mid-session; with `--allow-reconnect`, reconnection within 3 s with a keyframe (without it, the apps stay stopped, per Mutual kill) |
 | M9 | Quality/latency tuning | Run M4 harness at 3+ settings, including H.264 vs HEVC and 30 vs 60 fps, watching iMac decode time; keep the best by p95 latency and smoothness; record results in `docs/tuning.md` |
 | M10 | Host menu bar app (see "Host app") | State machine unit tests; 20 start/stop cycles leave no process, port or capture session behind; Stop completes in < 1 s; permission-denied and cable-unplugged paths end in a clear error state |
 | M11 | Client waiting/status UI on the iMac | Client idles with "Waiting for MacBook"; goes full-screen when sharing starts and returns to idle when it ends, with no manual step on the iMac |

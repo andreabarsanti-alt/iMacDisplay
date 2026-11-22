@@ -92,7 +92,7 @@ Two separate connections: video must be allowed to drop frames, input must never
 - **Cursor:** host sends cursor position and shape; client draws it locally as an overlay for zero-lag feel. Hide the iMac's own cursor over the view.
 - **System shortcuts:** `CGEventTap` on the client (Accessibility permission) to capture Cmd-Tab, Cmd-Space, etc. while the window is focused and forward them instead of letting the iMac handle them.
 - **Escape hatch:** a reserved key combo (e.g. Ctrl-Option-Cmd-Q) that releases capture and quits the client.
-- **Clipboard sync:** poll `NSPasteboard.changeCount` on both sides, send text over the input channel.
+- ~~**Clipboard sync**~~: dropped (2026-11-22); data moves via AirDrop for now. The `clipboard` message type stays reserved in the protocol.
 - **Reconnect:** only with `--allow-reconnect` (a missed heartbeat otherwise stops everything, see the agentic plan); client requests a keyframe on connect.
 - **Menu bar status item** on both sides: connected / disconnected, quit.
 

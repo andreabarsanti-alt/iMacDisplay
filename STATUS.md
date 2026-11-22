@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M7 done (tag `m7`). Feel test passed (human: "Feels great", 2026-11-22). Next: M8 clipboard, reconnect, status items. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M7 done (tag `m7`). Feel test passed (human: "Feels great", 2026-11-22). Next: M8 reconnect + status items (clipboard sync dropped by human decision). Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
@@ -65,6 +65,8 @@ All pass except link speed:
 
 - **Pause toggle (human request):** Ctrl-Option-Cmd-Z hides the mirror and gives the iMac back without disconnecting; same combo brings it back (handled in the event tap, so it works while hidden). Modifiers are cleared on the host when pausing.
 - **Initial connect retry:** the first launch after an app rebuild can get ENETDOWN while macOS re-checks Local Network permission; the client retries for up to 8 s before giving up.
+
+- **No clipboard sync** (human decision 2026-11-22): AirDrop for moving data for now; protocol keeps the `clipboard` type reserved.
 
 ## Blockers
 
