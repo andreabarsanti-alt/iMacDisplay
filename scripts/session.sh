@@ -6,11 +6,11 @@ cd "$(dirname "$0")/.."
 [ -f STOP ] && { echo "STOP present"; exit 2; }
 mkdir -p logs
 swift build -q || exit 1
-.build/debug/RemoteMirrorHost --serve "$@" > logs/session-host.log 2>&1 &
+.build/debug/RemoteMirrorHost --serve --allow-reconnect "$@" > logs/session-host.log 2>&1 &
 HPID=$!
 trap 'kill $HPID 2>/dev/null' INT TERM
 sleep 2
 echo "Session running. On the iMac: Ctrl-Option-Cmd-Q to end."
-scripts/run-client.sh > logs/session-client.log 2>&1
+scripts/run-client.sh --allow-reconnect > logs/session-client.log 2>&1
 wait $HPID 2>/dev/null
 echo "Session ended."; grep -E '"stopping"' logs/session-host.log

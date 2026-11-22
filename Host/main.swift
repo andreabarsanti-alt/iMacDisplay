@@ -25,6 +25,7 @@ import Shared
 //     --latency       show the M4 latency marker; print median/p95 on exit
 //     --view-only     don't inject keyboard/mouse events from the iMac
 //     --log-input     print every input event received (JSON)
+//     --allow-reconnect  keep listening when the client drops (escape hatch still stops)
 //     --dead-man <s>  stop injecting input after N seconds (tests)
 //     --input-test    show a focused text field; print its content on exit
 //     --expect-text <s>  with --input-test: PASS only if the field equals this
@@ -190,6 +191,7 @@ if flag("--serve") {
     var needKeyframe = false
     let pattern = flag("--pattern") ? TestPatternWindow() : nil
     let marker = flag("--latency") ? LatencyMarkerWindow() : nil
+    let status = StatusItem(title: "MacBook → iMac")
     var inputCfg = cfg
     inputCfg.port = WireProtocol.inputPort
     let inputServer = VideoServer(config: inputCfg)
@@ -210,7 +212,6 @@ if flag("--serve") {
     let cursor = flag("--video-cursor") ? nil : CursorTracker()
     cursor?.onPosition = { x, y in server.sendControl(.cursor(x: x, y: y, visible: true)) }
     cursor?.onShape = { shape in server.sendControl(.cursorShape(shape)) }
-    server.onClientReady = { DispatchQueue.main.async { cursor?.resend() } }
     let mouseTest = flag("--mouse-test") ? MouseTestWindow() : nil
     let latency = LatencyStats()
     server.onLatencyEcho = { v in
@@ -240,6 +241,7 @@ if flag("--serve") {
         stopping = true
         print("{\"event\":\"stopping\",\"reason\":\"\(why)\"}")
         injector.stop()          // first: no more input, release held keys
+        status.set(.stopped)
         inputServer.stop()
         server.stop {
             DispatchQueue.main.async {
@@ -275,11 +277,33 @@ if flag("--serve") {
     }
     server.onKeyframeRequest = { encoder?.requestKeyframe() }
     // Mutual kill: client gone (bye, close or heartbeat timeout) stops everything.
-    server.onClientGone = { why in DispatchQueue.main.async { stopAll("client gone: \(why)", code: 0) } }
-    inputServer.onClientGone = { why in DispatchQueue.main.async { stopAll("input client gone: \(why)", code: 0) } }
-    inputServer.onByeFromClient = { r in
-        if r == .escapeHatch { print("{\"event\":\"escape_hatch\"}") }
+    let allowReconnect = flag("--allow-reconnect")
+    var escapeRequested = false
+    func clientGone(_ which: String, _ why: String) {
+        DispatchQueue.main.async {
+            if allowReconnect && !escapeRequested {
+                // Brief drop: release anything held and wait for the client to come back.
+                injector.releaseAll()
+                status.set(.waiting)
+                print("{\"event\":\"waiting_for_client\",\"which\":\"\(which)\",\"reason\":\"\(why)\"}")
+            } else {
+                stopAll("\(which) client gone: \(why)", code: 0)
+            }
+        }
     }
+    server.onClientGone = { why in clientGone("video", why) }
+    inputServer.onClientGone = { why in clientGone("input", why) }
+    server.onClientReady = { DispatchQueue.main.async { cursor?.resend(); status.set(.connected) } }
+    let onBye: (ByeReason) -> Void = { r in
+        if r == .escapeHatch {
+            escapeRequested = true      // the iMac user ended the session: stop even with --allow-reconnect
+            print("{\"event\":\"escape_hatch\"}")
+        }
+    }
+    server.onByeFromClient = onBye
+    status.onQuit = { stopAll("quit from menu", code: 0) }
+    status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
+    inputServer.onByeFromClient = onBye
 
     let synth = synthetic ? SyntheticSource(fps: fps) : nil
     let capturer = synthetic ? nil : ScreenCapturer(onFrame: onFrame, onError: { e in
@@ -307,6 +331,7 @@ if flag("--serve") {
             try server.start()
             try inputServer.start()
             cursor?.start()
+            status.set(.waiting)
             inputTest?.show()
             if let mouseTest {
                 mouseTest.show()

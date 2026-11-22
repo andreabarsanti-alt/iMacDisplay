@@ -96,6 +96,12 @@ final class InputInjector {
         ev.post(tap: .cghidEventTap)
     }
 
+    /// Releases held keys/buttons but keeps injecting (client dropped, may reconnect).
+    func releaseAll() {
+        lock.lock(); defer { lock.unlock() }
+        releaseAllLocked()
+    }
+
     /// Releases held keys and clears modifiers; called on every stop path.
     func stop() {
         lock.lock(); defer { lock.unlock() }

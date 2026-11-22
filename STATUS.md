@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M7 done (tag `m7`). Feel test passed (human: "Feels great", 2026-11-22). Next: M8 reconnect + status items (clipboard sync dropped by human decision). Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M8 done (tag `m8`). M7 feel test passed (human: "Feels great", 2026-11-22). M8 done (tag `m8`). Next: M9 quality/latency tuning. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- M8 (`scripts/m8-test.sh`): client killed -> host waits, restarted client served with keyframe first; host killed and restarted after ~1 s -> client reconnected 1372 ms after the drop, keyframe first, session continued; without the flag the client quits at once (Mutual kill); escape hatch stops a --allow-reconnect host.
 - M7 + pause (`scripts/m7-test.sh`): all 13 checks pass, incl. pause hides the mirror, resume brings it back, connection kept.
 - M7 (`scripts/m7-test.sh`): event tap running on the iMac; Cmd-Tab and Cmd-Space typed on the iMac reached the host with the Cmd flag; cursor shape delivered; escape hatch ended the session cleanly on both sides (no processes left).
 - M6 (`scripts/m6-test.sh`, real screen capture): 25 events; 7 clicks (5 left, 1 right, 1 double) all on target, max error 0.00 pt; 5 scroll events, total dy -150.
@@ -67,6 +68,9 @@ All pass except link speed:
 - **Initial connect retry:** the first launch after an app rebuild can get ENETDOWN while macOS re-checks Local Network permission; the client retries for up to 8 s before giving up.
 
 - **No clipboard sync** (human decision 2026-11-22): AirDrop for moving data for now; protocol keeps the `clipboard` type reserved.
+
+- **Reconnect (M8):** `--allow-reconnect` on either side. Host: a dropped client releases held input and the host waits (escape hatch still stops it). Client: a drop starts a 30 s retry window; the first frame after reconnect is a keyframe. `scripts/session.sh` uses it on both sides.
+- **Status items:** both apps show a menu bar icon (Waiting / Connected / Reconnecting / Paused) with Quit; state changes are logged as JSON. Full menus come with M10/M11.
 
 ## Blockers
 

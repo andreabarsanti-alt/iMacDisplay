@@ -17,6 +17,7 @@ import Shared
 //   --marker <x,y,pitch>    read the M4 latency marker (cell centres in frame pixels) and echo it
 //   --type-text <s>         after connecting, type this text on the host (M5 test)
 //   --no-input              don't open the input connection
+//   --allow-reconnect       on a drop, keep retrying for 30 s instead of quitting
 //   --no-tap                don't capture system shortcuts (Cmd-Tab...) with the event tap
 //   --test-shortcuts        post Cmd-Tab + Cmd-Space on the iMac after connecting (M7 test)
 //   --test-escape <s>       post Ctrl-Option-Cmd-Q after N seconds (M7 test)
@@ -131,19 +132,36 @@ func finish(code: Int32, reason: String) -> Never {
     exit(code)
 }
 
+var awaitingFirstFrame = true
 client.onFrame = { f in
     stats.frameReceived(bytes: f.payload.count)
+    if awaitingFirstFrame {
+        awaitingFirstFrame = false
+        print(String(format: "{\"event\":\"first_frame\",\"keyframe\":%@,\"ms_after_connect\":%.0f}",
+                     f.isKeyframe ? "true" : "false", Date().timeIntervalSince(client.connectedAt) * 1000))
+    }
     if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc) {
         if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
     } else if f.isKeyframe { keyframeRequested = false }
 }
+let status = StatusItem(title: "iMac ← MacBook")
+status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
+let allowReconnect = flag("--allow-reconnect")
+client.allowReconnect = allowReconnect
+inputClient?.allowReconnect = allowReconnect
+var firstReady = true
 client.onReady = { DispatchQueue.main.async {
-    display.show(); inputClient?.connect()
+    status.set(paused ? .paused : .connected)
+    guard firstReady else { return }      // reconnects: window, input and tap already set up
+    firstReady = false
+    if !paused { display.show() }
+    inputClient?.connect()
     if !flag("--no-tap") && inputClient != nil {
         let ok = tap.start()
         print("{\"event\":\"shortcut_tap\",\"running\":\(ok)}")
     }
 } }
+client.onReconnecting = { _ in awaitingFirstFrame = true; status.set(.reconnecting) }
 client.onCursor = { x, y, v in DispatchQueue.main.async { display.hostCursor(x, y, visible: v) } }
 client.onCursorShape = { c in DispatchQueue.main.async { display.setCursorShape(c) } }
 display.inputView.onEvent = { e in inputClient?.send(e) }
@@ -169,6 +187,7 @@ func togglePause() {
         display.show()
         client.requestKeyframe()
     }
+    status.set(paused ? .paused : .connected)
     print("{\"event\":\"\(paused ? "paused" : "resumed")\"}")
 }
 display.inputView.onPauseToggle = togglePause
@@ -177,6 +196,7 @@ tap.onPauseToggle = { DispatchQueue.main.async { togglePause() } }
 // Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
 display.inputView.onEscape = escapeHatch
 tap.onEscape = { DispatchQueue.main.async { escapeHatch() } }
+status.onQuit = { escapeHatch() }
 inputClient?.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: "input: \(reason)") } }
 /// M6: scripted clicks through the same view <-> video mapping as real mouse events.
 func runMouseScript(_ spec: String) {

@@ -29,6 +29,14 @@ final class VideoClient {
     /// (macOS may briefly report "Network is down" while it re-checks a rebuilt app).
     var retryUntil: Date?
     private(set) var attempts = 0
+    /// After a successful session, a drop starts a new retry window instead of ending.
+    var allowReconnect = false
+    var reconnectWindow: TimeInterval = 30
+    var onReconnecting: ((String) -> Void)?
+    private(set) var reconnects = 0
+    private var reconnectStarted: Date?
+    /// When the latest handshake completed (for time-to-first-frame).
+    private(set) var connectedAt = Date()
 
     func connect() {
         if retryUntil == nil { retryUntil = Date().addingTimeInterval(8) }
@@ -59,7 +67,10 @@ final class VideoClient {
                 self.handshakeDone = true
                 c.startHeartbeat()
                 if self.port == WireProtocol.videoPort { c.send(.keyframeRequest) }
-                self.log("{\"event\":\"connected\",\"host\":\"\(self.host)\",\"port\":\(self.port)}")
+                self.connectedAt = Date()
+                let gap = self.reconnectStarted.map { String(format: ",\"reconnect_ms\":%.0f", Date().timeIntervalSince($0) * 1000) } ?? ""
+                self.reconnectStarted = nil
+                self.log("{\"event\":\"connected\",\"host\":\"\(self.host)\",\"port\":\(self.port),\"attempts\":\(self.attempts)\(gap)}")
                 self.onReady?()
                 return
             }
@@ -73,7 +84,18 @@ final class VideoClient {
         }
         c.onClose = { [weak self] reason in
             guard let self else { return }
-            if !self.handshakeDone, let until = self.retryUntil, Date() < until, !reason.contains("bye") {
+            if self.handshakeDone, self.allowReconnect, !reason.contains("escapeHatch") {
+                self.handshakeDone = false
+                self.reconnects += 1
+                self.retryUntil = Date().addingTimeInterval(self.reconnectWindow)
+                self.log("{\"event\":\"reconnecting\",\"port\":\(self.port),\"reason\":\"\(reason)\"}")
+                self.reconnectStarted = Date()
+                self.onReconnecting?(reason)
+                self.queue.asyncAfter(deadline: .now() + 0.3) { self.connect() }
+                return
+            }
+            let mayRetry = !reason.contains("bye") || (self.allowReconnect && self.reconnects > 0 && !reason.contains("escapeHatch"))
+            if !self.handshakeDone, let until = self.retryUntil, Date() < until, mayRetry {
                 self.log("{\"event\":\"connect_retry\",\"attempt\":\(self.attempts),\"reason\":\"\(reason)\"}")
                 self.queue.asyncAfter(deadline: .now() + 0.5) { self.connect() }
                 return
