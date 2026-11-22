@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M10 done (tag `m10`): MacBook menu bar app (`scripts/build-host-app.sh` -> `.build/RemoteMirror.app`). Next: M11 iMac waiting/status app; then human tries both apps together (needs Screen Recording + Accessibility for RemoteMirror.app on the MacBook).
+**Current milestone:** M11 done (tag `m11`). Human checkpoint: try both apps together (MacBook `RemoteMirror.app` menu bar + iMac `RemoteMirrorClient.app` waiting mode). Next: M12 packaged install/uninstall.
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- M11 (`scripts/m11-test.sh`): idle window at launch; full screen 1.6 s after the host starts with no action on the iMac; back to idle after host stop, after a second session, and after the host is killed (1 s); escape hatch ends the session and stops the host; quit ends the app. Full regression M3-M10 passes after the client restructuring.
 - M10 (`scripts/m10-test.sh`): state-machine unit tests; 20 start/stop cycles with the iMac connected and real capture: Stop avg 10 ms / max 23 ms, nothing listening and no capture left after each; permission denied -> "Error: Screen Recording not granted"; cable unplugged -> "Error: cable unplugged" detected in 0.9 s; no process left.
 - **Bug found by M10 and fixed:** `sayGoodbye` held the connection weakly, so when the server dropped its reference the bye never completed, the 0.5 s timeout fired and the connection was never closed (the iMac only noticed via heartbeat timeout). Stop went from ~530 ms to ~10 ms.
 - M9 (`scripts/m9-tune.sh`, 2 rounds): best = HEVC 60 fps 12 Mbps, median 32.7 / p95 45.1 ms, 57.2 fps, gap std 6.0 ms. Full regression M3-M8 passes with the new defaults (M3 similarity 0.960).
@@ -78,6 +79,8 @@ All pass except link speed:
 
 - **HostCore library (M10):** capture/encode/servers/injector/cursor + `HostSession` (start/stop sequence) + pure `HostStateMachine`. The CLI (`RemoteMirrorHost --serve`, used by all tests) and the menu bar app both run on it.
 - **Menu bar app:** SwiftUI MenuBarExtra, LSUIElement. Start/Stop toggle, status + fps/Mbps line, allow keyboard & mouse switch, quality preset (12/20 Mbps), permissions with buttons to the right Settings panes, Check link, Ctrl-Option-Cmd-S global hotkey (Carbon, no permission), auto-stop on sleep / screen lock / cable unplugged / escape hatch. Reconnect always on in the app. Pairing moves to M12 (installer). MacBook now also has the local "RemoteMirror Dev" signing identity.
+
+- **Client waiting mode (M11):** default when launched without test flags. Idle window "Waiting for MacBook…" + status item; polls the host quietly every 1 s; each session gets fresh connections/decoder; any session end returns to idle. Test runs (`--duration`, `--once`) keep the old one-shot behaviour. `scripts/run-client.sh` has `BG=1` for background launches.
 
 ## Blockers
 

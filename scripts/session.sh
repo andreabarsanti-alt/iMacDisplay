@@ -11,6 +11,6 @@ HPID=$!
 trap 'kill $HPID 2>/dev/null' INT TERM
 sleep 2
 echo "Session running. On the iMac: Ctrl-Option-Cmd-Q to end."
-scripts/run-client.sh --allow-reconnect > logs/session-client.log 2>&1
+scripts/run-client.sh --once --allow-reconnect > logs/session-client.log 2>&1
 wait $HPID 2>/dev/null
 echo "Session ended."; grep -E '"stopping"' logs/session-host.log

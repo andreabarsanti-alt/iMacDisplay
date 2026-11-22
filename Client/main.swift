@@ -8,7 +8,9 @@ import Shared
 //
 //   --verify-vectors        check protocol vectors from the host (stdin)
 //   --video-caps            hardware codec support as JSON
-//   --duration <s>          quit after N seconds (test mode); default: run until disconnected
+//   (no test flags)         waiting mode: idle window, mirror whenever the MacBook shares (M11)
+//   --duration <s>          one session, quit after N seconds (test mode)
+//   --once                  one session, quit when it ends
 //   --stats                 JSON stats line every second
 //   --dump-frame <path>     write the last displayed frame as PNG on exit
 //   --windowed              960x600 window instead of full screen
@@ -66,15 +68,33 @@ do { key = try LinkSecurity.loadKey(path: str("--key") ?? LinkSecurity.defaultKe
     print("FAIL: \(error)"); exit(1)
 }
 
+/// Waiting mode: the app stays up, shows "Waiting for MacBook" and mirrors whenever
+/// the MacBook starts sharing. Test runs (--duration / --once) do one session and exit.
+let waitingMode = num("--duration") == nil && !flag("--once")
+let hostAddress = str("--host") ?? WireProtocol.hostAddress
+
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
-let stats = ClientStats()
+var stats = ClientStats()
 let display = DisplayWindow(windowed: flag("--windowed"))
+let idle = IdleWindow()
 let hevc = flag("--hevc")
-let client = VideoClient(key: key, host: str("--host") ?? WireProtocol.hostAddress)
-let inputClient = flag("--no-input") ? nil
-    : VideoClient(key: key, host: str("--host") ?? WireProtocol.hostAddress, port: WireProtocol.inputPort)
+let status = StatusItem(title: "iMac ← MacBook")
+status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
+let tap = ShortcutTap()
+tap.isActive = { NSApp.isActive && display.window.isKeyWindow }
+
+// Per-session objects (recreated for every session in waiting mode).
+var client = VideoClient(key: key, host: hostAddress)
+var inputClient: VideoClient? = nil
+var decoder = VideoDecoder { _, _, _ in }
 var keyframeRequested = false
+var awaitingFirstFrame = true
+var firstReady = true
+var paused = false
+var sessionActive = false
+var sessions = 0
+
 let markerSpec: (x: Double, y: Double, pitch: Double)? = str("--marker").flatMap { s in
     let p = s.split(separator: ",").compactMap { Double($0) }
     return p.count == 3 ? (p[0], p[1], p[2]) : nil
@@ -99,18 +119,22 @@ func readMarker(_ pb: CVPixelBuffer) -> UInt32? {
     }
 }
 
-let decoder = VideoDecoder { pb, _, nanos in
-    stats.frameDecoded(nanos: nanos)
-    let marker = readMarker(pb)
-    DispatchQueue.main.async {
-        display.display(pb); stats.frameDisplayed()
-        // Echo after the frame is handed to the display layer.
-        if let marker, marker != lastMarker { lastMarker = marker; client.sendLatencyEcho(marker) }
-        else if marker == nil && markerSpec != nil { markerMisses += 1 }
+func makeDecoder() -> VideoDecoder {
+    let d = VideoDecoder { pb, _, nanos in
+        stats.frameDecoded(nanos: nanos)
+        let marker = readMarker(pb)
+        DispatchQueue.main.async {
+            display.display(pb); stats.frameDisplayed()
+            // Echo after the frame is handed to the display layer.
+            if let marker, marker != lastMarker { lastMarker = marker; client.sendLatencyEcho(marker) }
+            else if marker == nil && markerSpec != nil { markerMisses += 1 }
+        }
     }
+    d.onError = { e in stats.decodeError(); print("{\"event\":\"decode_error\",\"error\":\"\(e)\"}") }
+    return d
 }
-decoder.onError = { e in stats.decodeError(); print("{\"event\":\"decode_error\",\"error\":\"\(e)\"}") }
 
+/// Test runs: print the summary and exit.
 func finish(code: Int32, reason: String) -> Never {
     if let path = str("--dump-frame") {
         print(display.dumpFrame(to: path) ? "{\"event\":\"dumped\",\"path\":\"\(path)\"}"
@@ -132,52 +156,97 @@ func finish(code: Int32, reason: String) -> Never {
     exit(code)
 }
 
-var awaitingFirstFrame = true
-client.onFrame = { f in
-    stats.frameReceived(bytes: f.payload.count)
-    if awaitingFirstFrame {
-        awaitingFirstFrame = false
-        print(String(format: "{\"event\":\"first_frame\",\"keyframe\":%@,\"ms_after_connect\":%.0f}",
-                     f.isKeyframe ? "true" : "false", Date().timeIntervalSince(client.connectedAt) * 1000))
-    }
-    if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc || f.isHEVC) {
-        if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
-    } else if f.isKeyframe { keyframeRequested = false }
+/// A session ended (host stopped, cable pulled, escape hatch...). Test runs exit;
+/// waiting mode goes back to the idle window and waits for the next session.
+func sessionEnded(code: Int32, reason: String) {
+    guard waitingMode else { finish(code: code, reason: reason) }
+    guard sessionActive else { return }   // video and input both report the end; handle once
+    sessionActive = false
+    client.onClosed = nil; inputClient?.onClosed = nil
+    inputClient?.disconnect(.normal)
+    client.disconnect(.normal)
+    paused = false
+    display.close()
+    print("{\"event\":\"session_ended\",\"reason\":\"\(reason)\",\"display_fps\":\(String(format: "%.1f", stats.summary().displayFps))}")
+    idle.setDetail(reason)
+    goIdle()
 }
-let status = StatusItem(title: "iMac ← MacBook")
-status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
-let allowReconnect = flag("--allow-reconnect")
-client.allowReconnect = allowReconnect
-inputClient?.allowReconnect = allowReconnect
-var firstReady = true
-client.onReady = { DispatchQueue.main.async {
-    status.set(paused ? .paused : .connected)
-    guard firstReady else { return }      // reconnects: window, input and tap already set up
-    firstReady = false
-    if !paused { display.show() }
-    inputClient?.connect()
-    if !flag("--no-tap") && inputClient != nil {
-        let ok = tap.start()
-        print("{\"event\":\"shortcut_tap\",\"running\":\(ok)}")
+
+func goIdle() {
+    status.set(.waiting)
+    NSApp.activate(ignoringOtherApps: true)
+    idle.show()
+    print("{\"event\":\"idle\",\"idle_window\":\(idle.isVisible),\"mirror_visible\":\(display.window.isVisible)}")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { startSession() }
+}
+
+/// Creates fresh connections and waits (quietly, forever in waiting mode) for the host.
+func startSession() {
+    stats = ClientStats()
+    decoder = makeDecoder()
+    keyframeRequested = false; awaitingFirstFrame = true; firstReady = true
+    client = VideoClient(key: key, host: hostAddress)
+    inputClient = flag("--no-input") ? nil : VideoClient(key: key, host: hostAddress, port: WireProtocol.inputPort)
+    if waitingMode { client.waitForever = true; client.retryInterval = 1 }
+    let allowReconnect = flag("--allow-reconnect")
+    client.allowReconnect = allowReconnect
+    inputClient?.allowReconnect = allowReconnect
+    client.log = { line in if !waitingMode || !line.contains("connect_retry") { print(line) } }
+
+    client.onFrame = { f in
+        stats.frameReceived(bytes: f.payload.count)
+        if awaitingFirstFrame {
+            awaitingFirstFrame = false
+            print(String(format: "{\"event\":\"first_frame\",\"keyframe\":%@,\"ms_after_connect\":%.0f}",
+                         f.isKeyframe ? "true" : "false", Date().timeIntervalSince(client.connectedAt) * 1000))
+        }
+        if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc || f.isHEVC) {
+            if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
+        } else if f.isKeyframe { keyframeRequested = false }
     }
-} }
-client.onReconnecting = { _ in awaitingFirstFrame = true; status.set(.reconnecting) }
-client.onCursor = { x, y, v in DispatchQueue.main.async { display.hostCursor(x, y, visible: v) } }
-client.onCursorShape = { c in DispatchQueue.main.async { display.setCursorShape(c) } }
+    client.onReady = { DispatchQueue.main.async {
+        status.set(paused ? .paused : .connected)
+        guard firstReady else { return }      // reconnects: window, input and tap already set up
+        firstReady = false
+        sessionActive = true
+        sessions += 1
+        idle.hide()
+        if !paused { display.show() }
+        print("{\"event\":\"session_started\",\"n\":\(sessions),\"mirror_visible\":\(display.window.isVisible)}")
+        inputClient?.connect()
+        if !flag("--no-tap") && inputClient != nil && !tap.isRunning {
+            let ok = tap.start()
+            print("{\"event\":\"shortcut_tap\",\"running\":\(ok)}")
+        }
+    } }
+    client.onReconnecting = { _ in awaitingFirstFrame = true; status.set(.reconnecting) }
+    client.onCursor = { x, y, v in DispatchQueue.main.async { display.hostCursor(x, y, visible: v) } }
+    client.onCursorShape = { c in DispatchQueue.main.async { display.setCursorShape(c) } }
+    inputClient?.onReady = { runTestScripts() }
+    let failCode: Int32 = num("--duration") == nil ? 0 : 1
+    inputClient?.onClosed = { reason in DispatchQueue.main.async { sessionEnded(code: failCode, reason: "input: \(reason)") } }
+    client.onClosed = { reason in DispatchQueue.main.async { sessionEnded(code: failCode, reason: reason) } }
+    client.connect()
+}
+
 display.inputView.onEvent = { e in inputClient?.send(e) }
-// System shortcuts: a global tap forwards every key while the mirror window is active.
-let tap = ShortcutTap()
-tap.isActive = { NSApp.isActive && display.window.isKeyWindow }
 tap.onEvent = { e in inputClient?.send(e) }
+
+// Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side
+// (test runs exit; waiting mode returns to the idle window).
 func escapeHatch() {
+    guard sessionActive || !waitingMode else { return }
     print("{\"event\":\"escape_hatch\"}")
     client.onClosed = nil; inputClient?.onClosed = nil
     inputClient?.disconnect(.escapeHatch)
-    client.disconnect(.escapeHatch) { DispatchQueue.main.async { finish(code: 0, reason: "escape hatch") } }
+    client.disconnect(.escapeHatch) { DispatchQueue.main.async {
+        if waitingMode { sessionEnded(code: 0, reason: "escape hatch") }
+        else { finish(code: 0, reason: "escape hatch") }
+    } }
 }
 // Pause: Ctrl-Option-Cmd-Z hides the mirror (iMac usable), pressing it again brings it back.
-var paused = false
 func togglePause() {
+    guard sessionActive || !waitingMode else { return }
     paused.toggle()
     if paused {
         // The combo's modifiers were already forwarded: clear them on the host.
@@ -192,12 +261,16 @@ func togglePause() {
 }
 display.inputView.onPauseToggle = togglePause
 tap.onPauseToggle = { DispatchQueue.main.async { togglePause() } }
-
-// Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
 display.inputView.onEscape = escapeHatch
 tap.onEscape = { DispatchQueue.main.async { escapeHatch() } }
-status.onQuit = { escapeHatch() }
-inputClient?.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: "input: \(reason)") } }
+func quitApp() {
+    print("{\"event\":\"quit\"}")
+    client.onClosed = nil; inputClient?.onClosed = nil
+    inputClient?.disconnect(.normal)
+    client.disconnect(.normal) { DispatchQueue.main.async { tap.stop(); display.close(); exit(0) } }
+}
+status.onQuit = { waitingMode ? quitApp() : escapeHatch() }
+
 /// M6: scripted clicks through the same view <-> video mapping as real mouse events.
 func runMouseScript(_ spec: String) {
     let pts = spec.split(separator: ";").compactMap { pair -> (Double, Double)? in
@@ -233,7 +306,7 @@ func runMouseScript(_ spec: String) {
     }
 }
 
-inputClient?.onReady = {
+func runTestScripts() {
     if flag("--test-shortcuts") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { ShortcutTap.postTestShortcuts() }
     }
@@ -265,8 +338,6 @@ inputClient?.onReady = {
         }
     }
 }
-// Mutual kill: any disconnect ends the client (no auto-reconnect until M8's --allow-reconnect).
-client.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: reason) } }
 
 if flag("--stats") {
     Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in print(stats.intervalJSON(seconds: 1)) }
@@ -280,8 +351,11 @@ if let d = num("--duration") {
 }
 signal(SIGTERM, SIG_IGN)
 let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-sigterm.setEventHandler { client.onClosed = nil; inputClient?.onClosed = nil; inputClient?.disconnect(.normal); client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "SIGTERM") } } }
+sigterm.setEventHandler {
+    if waitingMode { quitApp() }
+    else { client.onClosed = nil; inputClient?.onClosed = nil; inputClient?.disconnect(.normal); client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "SIGTERM") } } }
+}
 sigterm.resume()
 
-client.connect()
+if waitingMode { goIdle() } else { startSession() }
 app.run()

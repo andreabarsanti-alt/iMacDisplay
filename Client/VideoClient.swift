@@ -38,8 +38,12 @@ final class VideoClient {
     /// When the latest handshake completed (for time-to-first-frame).
     private(set) var connectedAt = Date()
 
+    /// Waiting mode (M11): keep trying quietly every `retryInterval` until the host appears.
+    var waitForever = false
+    var retryInterval: TimeInterval = 0.5
+
     func connect() {
-        if retryUntil == nil { retryUntil = Date().addingTimeInterval(8) }
+        if retryUntil == nil { retryUntil = waitForever ? .distantFuture : Date().addingTimeInterval(8) }
         attempts += 1
         let params = LinkSecurity.parameters(key: key)
         let nw = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: params)
@@ -95,9 +99,9 @@ final class VideoClient {
                 return
             }
             let mayRetry = !reason.contains("bye") || (self.allowReconnect && self.reconnects > 0 && !reason.contains("escapeHatch"))
-            if !self.handshakeDone, let until = self.retryUntil, Date() < until, mayRetry {
-                self.log("{\"event\":\"connect_retry\",\"attempt\":\(self.attempts),\"reason\":\"\(reason)\"}")
-                self.queue.asyncAfter(deadline: .now() + 0.5) { self.connect() }
+            if !self.handshakeDone, let until = self.retryUntil, Date() < until, mayRetry || self.waitForever {
+                if !self.waitForever { self.log("{\"event\":\"connect_retry\",\"attempt\":\(self.attempts),\"reason\":\"\(reason)\"}") }
+                self.queue.asyncAfter(deadline: .now() + self.retryInterval) { self.connect() }
                 return
             }
             self.log("{\"event\":\"disconnected\",\"reason\":\"\(reason)\"}")
