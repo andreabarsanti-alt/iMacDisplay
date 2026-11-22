@@ -28,6 +28,7 @@ public enum MessageType: UInt8, CaseIterable {
     case input = 20
     case cursor = 21
     case clipboard = 22
+    case cursorShape = 23
     case latencyEcho = 40
 }
 
@@ -73,6 +74,15 @@ public struct InputEvent: Equatable {
     }
 }
 
+public struct CursorShape: Equatable {
+    public var width: Float32, height: Float32   // fraction of host display width (both)
+    public var hotX: Float32, hotY: Float32      // fraction of the cursor image, origin top-left
+    public var png: Data
+    public init(width: Float32, height: Float32, hotX: Float32, hotY: Float32, png: Data) {
+        self.width = width; self.height = height; self.hotX = hotX; self.hotY = hotY; self.png = png
+    }
+}
+
 public struct VideoFrame: Equatable {
     public static let keyframeFlag: UInt8 = 0x01
     public var ptsNanos: UInt64
@@ -100,6 +110,9 @@ public enum Message: Equatable {
     case input(InputEvent)
     case cursor(x: Float32, y: Float32, visible: Bool)
     case clipboard(String)
+    /// Host cursor image. Sizes are normalized to the host display width so the client
+    /// can scale with the video; hotspot is normalized to the cursor image (0...1).
+    case cursorShape(CursorShape)
     /// Client -> host: marker value read from a decoded frame (M4 latency harness).
     case latencyEcho(marker: UInt32)
 
@@ -114,6 +127,7 @@ public enum Message: Equatable {
         case .input: return .input
         case .cursor: return .cursor
         case .clipboard: return .clipboard
+        case .cursorShape: return .cursorShape
         case .latencyEcho: return .latencyEcho
         }
     }
@@ -145,6 +159,8 @@ public enum Message: Equatable {
             w.bytes(Data(text.utf8))
         case let .latencyEcho(marker):
             w.u32(marker)
+        case let .cursorShape(c):
+            w.f32(c.width); w.f32(c.height); w.f32(c.hotX); w.f32(c.hotY); w.bytes(c.png)
         }
         return w.data
     }
@@ -187,6 +203,9 @@ public enum Message: Equatable {
             msg = .clipboard(s)
         case .latencyEcho:
             msg = .latencyEcho(marker: try r.u32())
+        case .cursorShape:
+            msg = .cursorShape(CursorShape(width: try r.f32(), height: try r.f32(), hotX: try r.f32(), hotY: try r.f32(),
+                                           png: r.rest()))
         }
         // Fixed-size messages must not carry trailing bytes.
         if r.remaining != 0 { throw WireError.invalidValue("trailing bytes in \(type)") }

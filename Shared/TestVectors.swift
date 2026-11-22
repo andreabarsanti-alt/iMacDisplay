@@ -16,6 +16,7 @@ public enum TestVectors {
         .cursor(x: 0.125, y: 0.875, visible: true),
         .clipboard("ciao, perché? ✓"),
         .latencyEcho(marker: 0x00ab_cdef),
+        .cursorShape(CursorShape(width: 0.0125, height: 0.02, hotX: 0.25, hotY: 0.125, png: Data([0x89, 0x50, 0x4e, 0x47]))),
     ]
 
     public static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }

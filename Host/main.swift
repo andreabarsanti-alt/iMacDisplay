@@ -21,9 +21,10 @@ import Shared
 //     --duration <s>  stop after N seconds (default: until the client disconnects)
 //     --pattern       also show the animated test-pattern window
 //     --points        capture at point size instead of native Retina pixels
-//     --no-cursor     leave the cursor out of the video (client overlay, M7)
+//     --video-cursor  draw the cursor into the video instead of the client overlay
 //     --latency       show the M4 latency marker; print median/p95 on exit
 //     --view-only     don't inject keyboard/mouse events from the iMac
+//     --log-input     print every input event received (JSON)
 //     --dead-man <s>  stop injecting input after N seconds (tests)
 //     --input-test    show a focused text field; print its content on exit
 //     --expect-text <s>  with --input-test: PASS only if the field equals this
@@ -199,8 +200,17 @@ if flag("--serve") {
     if !viewOnly && !injector.isTrusted {
         print("{\"event\":\"warning\",\"reason\":\"accessibility_denied\",\"detail\":\"input from the iMac will be ignored by macOS\"}")
     }
-    inputServer.onInput = { e in if !viewOnly { injector.inject(e) } }
+    let logInput = flag("--log-input")
+    inputServer.onInput = { e in
+        if logInput { print("{\"event\":\"input_event\",\"kind\":\(e.kind.rawValue),\"code\":\(e.code),\"flags\":\(e.flags)}") }
+        if !viewOnly { injector.inject(e) }
+    }
     let inputTest = flag("--input-test") ? InputTestWindow() : nil
+    // Cursor overlay (M7): position + shape go to the client, which draws the cursor itself.
+    let cursor = flag("--video-cursor") ? nil : CursorTracker()
+    cursor?.onPosition = { x, y in server.sendControl(.cursor(x: x, y: y, visible: true)) }
+    cursor?.onShape = { shape in server.sendControl(.cursorShape(shape)) }
+    server.onClientReady = { DispatchQueue.main.async { cursor?.resend() } }
     let mouseTest = flag("--mouse-test") ? MouseTestWindow() : nil
     let latency = LatencyStats()
     server.onLatencyEcho = { v in
@@ -282,7 +292,7 @@ if flag("--serve") {
                 width = Int32(synth.width); height = Int32(synth.height)
                 synth.start(onFrame: onFrame)
             } else if let capturer {
-                try await capturer.start(fps: fps, nativePixels: !flag("--points"), showsCursor: !flag("--no-cursor"))
+                try await capturer.start(fps: fps, nativePixels: !flag("--points"), showsCursor: flag("--video-cursor"))
                 width = Int32(capturer.width); height = Int32(capturer.height)
             }
             encoder = try VideoEncoder(width: width, height: height, fps: fps, bitrate: bitrate, codec: codec, onOutput: onEncoded)
@@ -296,6 +306,7 @@ if flag("--serve") {
             }
             try server.start()
             try inputServer.start()
+            cursor?.start()
             inputTest?.show()
             if let mouseTest {
                 mouseTest.show()

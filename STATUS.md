@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M6 done (tag `m6`). Next: M7 cursor overlay, shortcut capture, escape hatch test; then human feel test.
+**Current milestone:** M7 done (tag `m7`). Human checkpoint: feel test (typing, mouse, shortcuts, escape hatch) with `scripts/session.sh`. Next: M8 clipboard, reconnect, status items. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
@@ -27,10 +27,11 @@ All pass except link speed:
 - Decision: permissions granted to **Terminal.app** (no signing identity on either Mac; processes started from Terminal inherit its TCC grants, so rebuilds don't reset them). Revisit with a real certificate for the M10 app.
 - MacBook Screen Recording: **granted** (works without restarting Terminal).
 - MacBook Accessibility: **granted** (2026-11-22).
-- iMac: client runs over SSH, attaches to the logged-in GUI session; no prompts so far (no Local Network prompt either).
+- iMac: client is now `RemoteMirrorClient.app`, signed with a local self-signed identity "RemoteMirror Dev" (dedicated keychain `remotemirror.keychain-db`, created over SSH by `scripts/setup/signing-cert.sh`, no trust prompt needed). Launched via `open` so permissions belong to the app. **Accessibility: granted. Local Network: granted** (2026-11-22).
 
 ## Last test results
 
+- M7 (`scripts/m7-test.sh`): event tap running on the iMac; Cmd-Tab and Cmd-Space typed on the iMac reached the host with the Cmd flag; cursor shape delivered; escape hatch ended the session cleanly on both sides (no processes left).
 - M6 (`scripts/m6-test.sh`, real screen capture): 25 events; 7 clicks (5 left, 1 right, 1 double) all on target, max error 0.00 pt; 5 scroll events, total dy -150.
 - M5 (`scripts/m5-test.sh`, run twice): 60 key events incl. Shift, field = "Hello World 2026 ciao Mondo" exactly. Dead man's switch (`--dead-man 1`): injection stopped, 0 events, field empty. Escape hatch Ctrl-Option-Cmd-Q implemented on the client (tested in M7).
 - M4 (`scripts/m4-test.sh`, 60 s, 3024x1964 H.264 30 Mbps): 1764 samples, 0 marker misses; latency min 25.1 / **median 49.9 / p95 56.5** / max 167.0 ms (draw -> capture -> encode -> link -> decode -> display enqueue; excludes iMac panel scan-out, ~8 ms avg). 29.5 fps, decode 3.4 ms.
@@ -57,6 +58,9 @@ All pass except link speed:
 - **Lid closed (human question):** not supported now (sleep + no display to capture). Candidate extra milestone after M11: HDMI dummy plug + clamshell mode, capturing that display at a 16:9 mode matching the iMac; alternative is a virtual display via private API.
 
 - **Input on its own TLS connection (port 5002)**, same handshake/pinning as video; either connection dropping stops everything. Keys are sent as hardware keycodes + CGEvent flags; Cmd combos captured via `performKeyEquivalent`. Held keys are released on every stop path.
+
+- **Cursor overlay:** host polls position (120 Hz) and shape (10 Hz) and sends them on the video connection; the client draws the cursor and follows its own mouse instantly, using the host position when the MacBook trackpad moves it. Video no longer contains the cursor (`--video-cursor` to restore).
+- **Shortcut capture:** a CGEventTap at HID level on the iMac swallows all key events while the mirror window is active and forwards them; Ctrl-Option-Cmd-Q is handled in the tap too.
 
 ## Blockers
 

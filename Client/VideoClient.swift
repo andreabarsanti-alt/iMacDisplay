@@ -18,6 +18,8 @@ final class VideoClient {
     var onFrame: ((VideoFrame) -> Void)?
     var onClosed: ((String) -> Void)?
     var onBye: ((ByeReason) -> Void)?
+    var onCursor: ((Float32, Float32, Bool) -> Void)?
+    var onCursorShape: ((CursorShape) -> Void)?
 
     init(key: Data, host: String = WireProtocol.hostAddress, port: UInt16 = WireProtocol.videoPort) {
         self.key = key; self.host = host; self.port = port
@@ -56,6 +58,8 @@ final class VideoClient {
             }
             switch m {
             case let .videoFrame(f): self.onFrame?(f)
+            case let .cursor(x, y, visible): self.onCursor?(x, y, visible)
+            case let .cursorShape(c): self.onCursorShape?(c)
             case let .bye(r): self.onBye?(r); c.close("host said bye: \(r)")
             default: break
             }

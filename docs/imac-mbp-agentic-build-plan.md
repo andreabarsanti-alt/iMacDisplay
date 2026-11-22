@@ -100,6 +100,8 @@ The agent works through milestones in order, runs the acceptance test for each, 
 | M9 | Quality/latency tuning | Run M4 harness at 3+ settings, including H.264 vs HEVC and 30 vs 60 fps, watching iMac decode time; keep the best by p95 latency and smoothness; record results in `docs/tuning.md` |
 | M10 | Host menu bar app (see "Host app") | State machine unit tests; 20 start/stop cycles leave no process, port or capture session behind; Stop completes in < 1 s; permission-denied and cable-unplugged paths end in a clear error state |
 | M11 | Client waiting/status UI on the iMac | Client idles with "Waiting for MacBook"; goes full-screen when sharing starts and returns to idle when it ends, with no manual step on the iMac |
+| M12 | Packaged install / uninstall for both Macs | `install-host` (MacBook) and `install-client` (iMac) set up everything done by hand so far: link IP + service order (with backup), SSH key, pre-shared key, local signing identity, signed apps, permission panes opened and verified. `uninstall-*` restores the saved network state and removes keys, identity, apps and files. Test: install, run M3/M5 tests, uninstall, check the original state is back; repeatable on a second iMac |
+| M13 (optional) | Lid closed (clamshell) | With an HDMI dummy plug + power, the MacBook keeps running lid-closed; the host captures that display at a 16:9 mode matching the iMac (no letterboxing). Alternative: virtual display via private API |
 
 **Agent rules**
 - Never run sudo or change system settings, firewall, or signing configuration; ask the human instead.

@@ -1,5 +1,7 @@
 import AppKit
+import ApplicationServices
 import Foundation
+import Network
 import Shared
 
 // RemoteMirrorClient: runs on the iMac (x86_64).
@@ -15,6 +17,9 @@ import Shared
 //   --marker <x,y,pitch>    read the M4 latency marker (cell centres in frame pixels) and echo it
 //   --type-text <s>         after connecting, type this text on the host (M5 test)
 //   --no-input              don't open the input connection
+//   --no-tap                don't capture system shortcuts (Cmd-Tab...) with the event tap
+//   --test-shortcuts        post Cmd-Tab + Cmd-Space on the iMac after connecting (M7 test)
+//   --test-escape <s>       post Ctrl-Option-Cmd-Q after N seconds (M7 test)
 //   --mouse-script <spec>   click/scroll host targets "nx,ny;..." (M6 test)
 //   --host <ip> --key <path>
 
@@ -27,6 +32,19 @@ func str(_ n: String) -> String? {
 func num(_ n: String) -> Double? { str(n).flatMap(Double.init) }
 
 if flag("--video-caps") { print(VideoCapabilities.json()); exit(0) }
+if flag("--check-permissions") || flag("--request-permissions") {
+    if flag("--request-permissions") {
+        let opt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([opt: true] as CFDictionary)
+        // Touch the link address once so macOS shows the Local Network prompt.
+        let c = NWConnection(host: NWEndpoint.Host(WireProtocol.hostAddress), port: 5001, using: .tcp)
+        c.start(queue: .main)
+        RunLoop.main.run(until: Date().addingTimeInterval(3))
+        c.cancel()
+    }
+    print("{\"permission\":\"accessibility\",\"status\":\"\(AXIsProcessTrusted() ? "granted" : "denied")\"}")
+    exit(0)
+}
 if flag("--verify-vectors") {
     let input = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
     let failures = TestVectors.verify(input)
@@ -103,6 +121,9 @@ func finish(code: Int32, reason: String) -> Never {
     if let minFps = num("--min-fps"), s.displayFps < minFps {
         print(String(format: "FAIL: average display fps %.1f < %.0f", s.displayFps, minFps)); code = 1
     }
+    tap.stop()
+    print("{\"event\":\"shortcuts\",\"forwarded\":\(tap.forwarded)}")
+    print("{\"event\":\"cursor\",\"updates\":\(display.cursorUpdates),\"shape\":\(display.cursorLayer.contents != nil)}")
     if markerSpec != nil { print("{\"event\":\"marker_misses\",\"count\":\(markerMisses)}") }
     print("{\"event\":\"exit\",\"reason\":\"\(reason)\",\"hardware_decode\":\(decoder.usingHardware)}")
     if code == 0 && num("--min-fps") != nil { print("PASS") }
@@ -115,15 +136,29 @@ client.onFrame = { f in
         if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
     } else if f.isKeyframe { keyframeRequested = false }
 }
-client.onReady = { DispatchQueue.main.async { display.show(); inputClient?.connect() } }
+client.onReady = { DispatchQueue.main.async {
+    display.show(); inputClient?.connect()
+    if !flag("--no-tap") && inputClient != nil {
+        let ok = tap.start()
+        print("{\"event\":\"shortcut_tap\",\"running\":\(ok)}")
+    }
+} }
+client.onCursor = { x, y, v in DispatchQueue.main.async { display.hostCursor(x, y, visible: v) } }
+client.onCursorShape = { c in DispatchQueue.main.async { display.setCursorShape(c) } }
 display.inputView.onEvent = { e in inputClient?.send(e) }
-// Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
-display.inputView.onEscape = {
+// System shortcuts: a global tap forwards every key while the mirror window is active.
+let tap = ShortcutTap()
+tap.isActive = { NSApp.isActive && display.window.isKeyWindow }
+tap.onEvent = { e in inputClient?.send(e) }
+func escapeHatch() {
     print("{\"event\":\"escape_hatch\"}")
     client.onClosed = nil; inputClient?.onClosed = nil
     inputClient?.disconnect(.escapeHatch)
     client.disconnect(.escapeHatch) { DispatchQueue.main.async { finish(code: 0, reason: "escape hatch") } }
 }
+// Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
+display.inputView.onEscape = escapeHatch
+tap.onEscape = { DispatchQueue.main.async { escapeHatch() } }
 inputClient?.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: "input: \(reason)") } }
 /// M6: scripted clicks through the same view <-> video mapping as real mouse events.
 func runMouseScript(_ spec: String) {
@@ -161,6 +196,12 @@ func runMouseScript(_ spec: String) {
 }
 
 inputClient?.onReady = {
+    if flag("--test-shortcuts") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { ShortcutTap.postTestShortcuts() }
+    }
+    if let d = num("--test-escape") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + d) { ShortcutTap.postEscape() }
+    }
     if let spec = str("--mouse-script") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { runMouseScript(spec) }
     }

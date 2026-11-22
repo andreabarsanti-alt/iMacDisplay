@@ -7,6 +7,8 @@ import Shared
 final class InputView: NSView {
     var onEvent: ((InputEvent) -> Void)?
     var onEscape: (() -> Void)?
+    /// Local pointer moved (normalized video coords): drives the zero-lag cursor overlay.
+    var onLocalMove: ((Float32, Float32) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -70,6 +72,7 @@ final class InputView: NSView {
 
     private func mouse(_ e: NSEvent, _ kind: InputKind) {
         let (x, y) = normalize(convert(e.locationInWindow, from: nil))
+        onLocalMove?(x, y)
         onEvent?(InputEvent(kind: kind, flags: flags(e), code: Self.mouseCode(button: e.buttonNumber, clicks: e.clickCount),
                             x: x, y: y))
     }

@@ -67,6 +67,12 @@ final class VideoServer {
 
     var isStreaming: Bool { queue.sync { streaming } }
 
+    /// Sends a small control message (cursor etc.) if a client is streaming.
+    func sendControl(_ m: Message) {
+        guard let c = queue.sync(execute: { streaming ? client : nil }) else { return }
+        c.send(m)
+    }
+
     /// Sends one encoded frame, or drops it if the socket is backed up.
     /// Returns false if dropped (caller should then force a keyframe).
     @discardableResult
