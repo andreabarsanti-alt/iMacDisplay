@@ -13,6 +13,8 @@ import Shared
 //   --hevc                  expect HEVC instead of H.264
 //   --min-fps <n>           exit 1 if average displayed fps is below n (with --duration)
 //   --marker <x,y,pitch>    read the M4 latency marker (cell centres in frame pixels) and echo it
+//   --type-text <s>         after connecting, type this text on the host (M5 test)
+//   --no-input              don't open the input connection
 //   --host <ip> --key <path>
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -49,6 +51,8 @@ let stats = ClientStats()
 let display = DisplayWindow(windowed: flag("--windowed"))
 let hevc = flag("--hevc")
 let client = VideoClient(key: key, host: str("--host") ?? WireProtocol.hostAddress)
+let inputClient = flag("--no-input") ? nil
+    : VideoClient(key: key, host: str("--host") ?? WireProtocol.hostAddress, port: WireProtocol.inputPort)
 var keyframeRequested = false
 let markerSpec: (x: Double, y: Double, pitch: Double)? = str("--marker").flatMap { s in
     let p = s.split(separator: ",").compactMap { Double($0) }
@@ -110,7 +114,29 @@ client.onFrame = { f in
         if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
     } else if f.isKeyframe { keyframeRequested = false }
 }
-client.onReady = { DispatchQueue.main.async { display.show() } }
+client.onReady = { DispatchQueue.main.async { display.show(); inputClient?.connect() } }
+display.inputView.onEvent = { e in inputClient?.send(e) }
+// Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side.
+display.inputView.onEscape = {
+    print("{\"event\":\"escape_hatch\"}")
+    client.onClosed = nil; inputClient?.onClosed = nil
+    inputClient?.disconnect(.escapeHatch)
+    client.disconnect(.escapeHatch) { DispatchQueue.main.async { finish(code: 0, reason: "escape hatch") } }
+}
+inputClient?.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: "input: \(reason)") } }
+inputClient?.onReady = {
+    guard let text = str("--type-text") else { return }
+    guard let events = KeyScript.events(for: text) else { print("FAIL: unsupported character in --type-text"); return }
+    // Give the host's test window a moment to take focus, then type at ~30 keys/s.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        for (i, e) in events.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.015) { inputClient?.send(e) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(events.count) * 0.015 + 0.2) {
+            print("{\"event\":\"typed\",\"events\":\(events.count)}")
+        }
+    }
+}
 // Mutual kill: any disconnect ends the client (no auto-reconnect until M8's --allow-reconnect).
 client.onClosed = { reason in DispatchQueue.main.async { finish(code: num("--duration") == nil ? 0 : 1, reason: reason) } }
 
@@ -119,13 +145,14 @@ if flag("--stats") {
 }
 if let d = num("--duration") {
     DispatchQueue.main.asyncAfter(deadline: .now() + d) {
-        client.onClosed = nil
+        client.onClosed = nil; inputClient?.onClosed = nil
+        inputClient?.disconnect(.normal)
         client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "duration elapsed") } }
     }
 }
 signal(SIGTERM, SIG_IGN)
 let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-sigterm.setEventHandler { client.onClosed = nil; client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "SIGTERM") } } }
+sigterm.setEventHandler { client.onClosed = nil; inputClient?.onClosed = nil; inputClient?.disconnect(.normal); client.disconnect(.normal) { DispatchQueue.main.async { finish(code: 0, reason: "SIGTERM") } } }
 sigterm.resume()
 
 client.connect()

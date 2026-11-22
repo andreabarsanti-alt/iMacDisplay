@@ -2,7 +2,8 @@ import Foundation
 import Network
 import Shared
 
-/// Connects to the host over the link (TLS-PSK), handshakes, then receives video.
+/// Connects to the host over the link (TLS-PSK) and handshakes. One instance
+/// receives video (port 5001); a second sends input (port 5002).
 final class VideoClient {
     private let queue = DispatchQueue(label: "video-client", qos: .userInteractive)
     private var conn: FramedConnection?
@@ -48,8 +49,8 @@ final class VideoClient {
                 }
                 self.handshakeDone = true
                 c.startHeartbeat()
-                c.send(.keyframeRequest)
-                self.log("{\"event\":\"connected\",\"host\":\"\(self.host)\"}")
+                if self.port == WireProtocol.videoPort { c.send(.keyframeRequest) }
+                self.log("{\"event\":\"connected\",\"host\":\"\(self.host)\",\"port\":\(self.port)}")
                 self.onReady?()
                 return
             }
@@ -68,6 +69,7 @@ final class VideoClient {
 
     func requestKeyframe() { conn?.send(.keyframeRequest) }
     func sendLatencyEcho(_ v: UInt32) { conn?.send(.latencyEcho(marker: v)) }
+    func send(_ e: InputEvent) { if handshakeDone { conn?.send(.input(e)) } }
 
     func disconnect(_ reason: ByeReason, then: (() -> Void)? = nil) {
         guard let c = conn else { then?(); return }

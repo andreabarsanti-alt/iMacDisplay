@@ -23,6 +23,10 @@ import Shared
 //     --points        capture at point size instead of native Retina pixels
 //     --no-cursor     leave the cursor out of the video (client overlay, M7)
 //     --latency       show the M4 latency marker; print median/p95 on exit
+//     --view-only     don't inject keyboard/mouse events from the iMac
+//     --dead-man <s>  stop injecting input after N seconds (tests)
+//     --input-test    show a focused text field; print its content on exit
+//     --expect-text <s>  with --input-test: PASS only if the field equals this
 //     --marker-spec-out <path>  write the marker position for the client
 //     --allow-peer <ip>  override the pinned client address (tests only)
 
@@ -183,6 +187,18 @@ if flag("--serve") {
     var needKeyframe = false
     let pattern = flag("--pattern") ? TestPatternWindow() : nil
     let marker = flag("--latency") ? LatencyMarkerWindow() : nil
+    var inputCfg = cfg
+    inputCfg.port = WireProtocol.inputPort
+    let inputServer = VideoServer(config: inputCfg)
+    let deadMan = args.firstIndex(of: "--dead-man").flatMap { i in i + 1 < args.count ? Double(args[i + 1]) : nil }
+    let injector = InputInjector(deadManSeconds: deadMan)
+    injector.log = { print($0) }
+    let viewOnly = flag("--view-only")
+    if !viewOnly && !injector.isTrusted {
+        print("{\"event\":\"warning\",\"reason\":\"accessibility_denied\",\"detail\":\"input from the iMac will be ignored by macOS\"}")
+    }
+    inputServer.onInput = { e in if !viewOnly { injector.inject(e) } }
+    let inputTest = flag("--input-test") ? InputTestWindow() : nil
     let latency = LatencyStats()
     server.onLatencyEcho = { v in
         guard let t = marker?.drawTime(v) else { return }
@@ -210,6 +226,8 @@ if flag("--serve") {
         guard !stopping else { return }
         stopping = true
         print("{\"event\":\"stopping\",\"reason\":\"\(why)\"}")
+        injector.stop()          // first: no more input, release held keys
+        inputServer.stop()
         server.stop {
             DispatchQueue.main.async {
                 encoder?.invalidate()
@@ -222,6 +240,16 @@ if flag("--serve") {
                     if l.count < minSamples { print("FAIL: only \(l.count) latency samples (< \(minSamples))"); code = 1 }
                     else { print("PASS") }
                 }
+                print("{\"event\":\"input\",\"injected\":\(injector.injectedCount),\"trusted\":\(injector.isTrusted)}")
+                if let inputTest {
+                    let got = inputTest.text
+                    let esc = got.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                    print("{\"event\":\"input_test\",\"text\":\"\(esc)\"}")
+                    if let i = args.firstIndex(of: "--expect-text"), i + 1 < args.count {
+                        if got == args[i + 1] { print("PASS") } else { print("FAIL: field is \"\(got)\", expected \"\(args[i + 1])\""); code = 1 }
+                    }
+                    inputTest.close()
+                }
                 exit(code)
             }
         }
@@ -229,6 +257,10 @@ if flag("--serve") {
     server.onKeyframeRequest = { encoder?.requestKeyframe() }
     // Mutual kill: client gone (bye, close or heartbeat timeout) stops everything.
     server.onClientGone = { why in DispatchQueue.main.async { stopAll("client gone: \(why)", code: 0) } }
+    inputServer.onClientGone = { why in DispatchQueue.main.async { stopAll("input client gone: \(why)", code: 0) } }
+    inputServer.onByeFromClient = { r in
+        if r == .escapeHatch { print("{\"event\":\"escape_hatch\"}") }
+    }
 
     let synth = synthetic ? SyntheticSource(fps: fps) : nil
     let capturer = synthetic ? nil : ScreenCapturer(onFrame: onFrame, onError: { e in
@@ -254,6 +286,8 @@ if flag("--serve") {
                 }
             }
             try server.start()
+            try inputServer.start()
+            inputTest?.show()
         } catch {
             print("FAIL: \(error)"); exit(1)
         }

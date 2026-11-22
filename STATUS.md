@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M4 done (tag `m4`). Next: M5 keyboard input, blocked on Accessibility for Terminal (still `denied`).
+**Current milestone:** M5 done (tag `m5`). Next: M6 mouse/scroll.
 
 ## Machines
 
@@ -26,11 +26,12 @@ All pass except link speed:
 
 - Decision: permissions granted to **Terminal.app** (no signing identity on either Mac; processes started from Terminal inherit its TCC grants, so rebuilds don't reset them). Revisit with a real certificate for the M10 app.
 - MacBook Screen Recording: **granted** (works without restarting Terminal).
-- MacBook Accessibility: **denied** so far (needed from M5).
+- MacBook Accessibility: **granted** (2026-11-22).
 - iMac: client runs over SSH, attaches to the logged-in GUI session; no prompts so far (no Local Network prompt either).
 
 ## Last test results
 
+- M5 (`scripts/m5-test.sh`, run twice): 60 key events incl. Shift, field = "Hello World 2026 ciao Mondo" exactly. Dead man's switch (`--dead-man 1`): injection stopped, 0 events, field empty. Escape hatch Ctrl-Option-Cmd-Q implemented on the client (tested in M7).
 - M4 (`scripts/m4-test.sh`, 60 s, 3024x1964 H.264 30 Mbps): 1764 samples, 0 marker misses; latency min 25.1 / **median 49.9 / p95 56.5** / max 167.0 ms (draw -> capture -> encode -> link -> decode -> display enqueue; excludes iMac panel scan-out, ~8 ms avg). 29.5 fps, decode 3.4 ms.
 - M3 (`scripts/m3-test.sh`): real screen 30 s → 29.5 fps displayed, HW decode 1.7 ms, 0 errors; client frame vs host screenshot similarity 0.974; mutual kill on client exit; wrong key, wrong source address (10.77.0.1) and plain TCP all rejected.
 - M2 (`RemoteMirrorHost --capture-test`): 28.9 fps, HW H.264 1512x982, encode 4.8 ms avg. `--encoder-test` (synthetic) passes for H.264 and HEVC.
@@ -54,9 +55,11 @@ All pass except link speed:
 - **Latency harness without clock sync:** the client echoes the marker value it decoded; the host subtracts its own draw time, so no cross-machine clock is needed.
 - **Lid closed (human question):** not supported now (sleep + no display to capture). Candidate extra milestone after M11: HDMI dummy plug + clamshell mode, capturing that display at a 16:9 mode matching the iMac; alternative is a virtual display via private API.
 
+- **Input on its own TLS connection (port 5002)**, same handshake/pinning as video; either connection dropping stops everything. Keys are sent as hardware keycodes + CGEvent flags; Cmd combos captured via `performKeyEquivalent`. Held keys are released on every stop path.
+
 ## Blockers
 
-- Accessibility for Terminal on the MacBook (human) before M5.
+- None.
 
 ## Running (to clean up at end of session)
 

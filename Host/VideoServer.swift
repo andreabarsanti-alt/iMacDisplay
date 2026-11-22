@@ -3,7 +3,9 @@ import Network
 import Shared
 
 /// Listens on the link address only, accepts a single authenticated client from
-/// the pinned peer address, performs the handshake, then streams video.
+/// the pinned peer address and performs the handshake. Used twice: video
+/// (port 5001, host -> client frames) and input (port 5002, client -> host events),
+/// so input never waits behind video.
 final class VideoServer {
     struct Config {
         var bindHost = WireProtocol.hostAddress
@@ -15,7 +17,7 @@ final class VideoServer {
     }
 
     private let config: Config
-    private let queue = DispatchQueue(label: "video-server", qos: .userInteractive)
+    private let queue: DispatchQueue
     private var listener: NWListener?
     private var client: FramedConnection?
     private var streaming = false
@@ -29,7 +31,12 @@ final class VideoServer {
     var onByeFromClient: ((ByeReason) -> Void)?
     var onLatencyEcho: ((UInt32) -> Void)?
 
-    init(config: Config) { self.config = config }
+    var onInput: ((InputEvent) -> Void)?
+
+    init(config: Config) {
+        self.config = config
+        queue = DispatchQueue(label: "server-\(config.port)", qos: .userInteractive)
+    }
 
     func start() throws {
         let local = NWEndpoint.hostPort(host: NWEndpoint.Host(config.bindHost),
@@ -95,13 +102,14 @@ final class VideoServer {
                 handshakeDone = true
                 c.startHeartbeat()
                 self.streaming = true
-                self.log("{\"event\":\"client_ready\",\"peer\":\"\(peer)\"}")
+                self.log("{\"event\":\"client_ready\",\"peer\":\"\(peer)\",\"port\":\(self.config.port)}")
                 self.onClientReady?()
                 return
             }
             switch m {
             case .keyframeRequest: self.onKeyframeRequest?()
             case let .latencyEcho(v): self.onLatencyEcho?(v)
+            case let .input(e): self.onInput?(e)
             case let .bye(r):
                 self.onByeFromClient?(r)
                 c.close("client said bye: \(r)")
@@ -112,7 +120,7 @@ final class VideoServer {
             guard let self else { return }
             if self.client === c { self.client = nil; self.streaming = false }
             if handshakeDone {
-                self.log("{\"event\":\"client_gone\",\"reason\":\"\(reason)\"}")
+                self.log("{\"event\":\"client_gone\",\"reason\":\"\(reason)\",\"port\":\(self.config.port)}")
                 self.onClientGone?(reason)
             } else {
                 self.log("{\"event\":\"rejected\",\"peer\":\"\(peer)\",\"reason\":\"\(reason)\"}")

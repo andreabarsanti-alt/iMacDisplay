@@ -2,23 +2,31 @@ import AppKit
 import AVFoundation
 import CoreImage
 
+/// Borderless windows can't become key by default; this one must, to get keystrokes.
+final class KeyWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 /// Full-screen borderless window showing decoded frames, aspect-fit.
 final class DisplayWindow {
     let window: NSWindow
     let layer = AVSampleBufferDisplayLayer()
+    private(set) var inputView: InputView!
     private var lastFrame: CVPixelBuffer?
     private let lock = NSLock()
 
     init(windowed: Bool) {
         let screen = NSScreen.main!
         let rect = windowed ? NSRect(x: 100, y: 100, width: 960, height: 600) : screen.frame
-        window = NSWindow(contentRect: rect, styleMask: windowed ? [.titled] : [.borderless],
+        window = KeyWindow(contentRect: rect, styleMask: windowed ? [.titled] : [.borderless],
                           backing: .buffered, defer: false, screen: screen)
         window.title = "RemoteMirror"
         window.backgroundColor = .black
         window.isReleasedWhenClosed = false
         if !windowed { window.level = .mainMenu + 1 }
-        let view = NSView(frame: NSRect(origin: .zero, size: rect.size))
+        let view = InputView(frame: NSRect(origin: .zero, size: rect.size))
+        inputView = view
         view.wantsLayer = true
         view.layer = CALayer()
         view.layer?.backgroundColor = NSColor.black.cgColor
@@ -32,6 +40,7 @@ final class DisplayWindow {
     func show() {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(inputView)
         NSCursor.hide()
     }
 
