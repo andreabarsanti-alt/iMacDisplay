@@ -20,7 +20,7 @@ All pass except link speed:
 - PASS: arch, toolchains vs package (tools 6.0, macOS 13), git in sync, masks, Internet Sharing off, ping 0.69 ms avg / 0% loss, ports 5001/5002 free, native builds, hardware H.264+HEVC encode (MacBook) and decode (iMac).
 - Note: macOS firewall is **off** on both; plan step 5 of "Securing the link" wants it on (human to change).
 
-**Human decision needed:** swap the cable, or accept 100 Mbps for now. 100 Mbps is enough for H.264 at ~25-40 Mbps (the plan's bitrate), so development can continue.
+**Decision (2026-11-22):** human accepted 100 Mbps for now; cable upgrade later. Bitrate must stay well under ~90 Mbps.
 
 ## Gate 2: permissions — not started
 
@@ -42,6 +42,7 @@ Needs a human at the MacBook for Screen Recording + Accessibility (before M2/M5)
 - Gate 1 link speed (human).
 - Gate 2 permissions (human).
 
-## Running on the iMac (to clean up at end of session)
+## Running (to clean up at end of session)
 
-- `caffeinate -dims` (PID in `~/.imacdisplay/caffeinate.pid`).
+- iMac: `caffeinate -dims` (PID in `~/.imacdisplay/caffeinate.pid` on the iMac).
+- MacBook: `caffeinate -dims` (PID in `~/.imacdisplay/caffeinate.pid` on the MacBook).
