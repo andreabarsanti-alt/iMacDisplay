@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M11 done (tag `m11`). Human checkpoint: try both apps together (MacBook `RemoteMirror.app` menu bar + iMac `RemoteMirrorClient.app` waiting mode). Next: M12 packaged install/uninstall.
+**Current milestone:** M11 done (tag `m11`). Human checkpoint passed: both apps together "works like a charm" (2026-11-22). Next: M12 packaged install/uninstall.
 
 ## Machines
 
