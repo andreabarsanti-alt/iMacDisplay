@@ -20,6 +20,8 @@ install_app() {
   osascript -e "quit app id \"$id\"" >/dev/null 2>&1 || true
   pkill -f "$dst/Contents/MacOS" 2>/dev/null || true
   rm -rf "$dst"; cp -R "$src" "$dst"
+  # Downloaded zips carry the quarantine flag; Gatekeeper would refuse the locally signed app.
+  xattr -dr com.apple.quarantine "$dst" 2>/dev/null || true
   if [ -n "${RM_TEST_SKIP_SIGN:-}" ]; then ok "installed $dst (signing skipped: test mode)"; return; fi
   "$HERE/signing-cert.sh" create >/dev/null
   "$HERE/signing-cert.sh" unlock

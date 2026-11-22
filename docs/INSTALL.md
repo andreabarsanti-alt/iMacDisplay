@@ -11,6 +11,14 @@ No Xcode or Swift is needed on the target Macs: each installer signs the app
 locally with a self-signed identity ("RemoteMirror Dev", own keychain), so the
 macOS permissions you grant survive updates.
 
+## Getting the packages
+
+From the GitHub release page of the (private) repo, logged in:
+`https://github.com/andreabarsanti-alt/iMacDisplay/releases` -> download
+`RemoteMirror-MacBook.zip` or `RemoteMirror-iMac.zip`, double-click to unzip, then
+in Terminal: `cd ~/Downloads/RemoteMirror-MacBook && ./install.sh` (or `RemoteMirror-iMac`).
+The installer removes the download quarantine flag from the app it installs.
+
 ## Order
 
 1. **Cable:** connect the MacBook (USB-C Ethernet adapter) to the iMac's Ethernet port.
