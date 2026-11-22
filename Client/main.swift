@@ -12,7 +12,7 @@ import Shared
 //   --stats                 JSON stats line every second
 //   --dump-frame <path>     write the last displayed frame as PNG on exit
 //   --windowed              960x600 window instead of full screen
-//   --hevc                  expect HEVC instead of H.264
+//   --hevc                  force HEVC parsing (normally taken from each frame's flags)
 //   --min-fps <n>           exit 1 if average displayed fps is below n (with --duration)
 //   --marker <x,y,pitch>    read the M4 latency marker (cell centres in frame pixels) and echo it
 //   --type-text <s>         after connecting, type this text on the host (M5 test)
@@ -140,7 +140,7 @@ client.onFrame = { f in
         print(String(format: "{\"event\":\"first_frame\",\"keyframe\":%@,\"ms_after_connect\":%.0f}",
                      f.isKeyframe ? "true" : "false", Date().timeIntervalSince(client.connectedAt) * 1000))
     }
-    if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc) {
+    if !decoder.decode(annexB: f.payload, ptsNanos: f.ptsNanos, hevc: hevc || f.isHEVC) {
         if !keyframeRequested { keyframeRequested = true; client.requestKeyframe() }
     } else if f.isKeyframe { keyframeRequested = false }
 }

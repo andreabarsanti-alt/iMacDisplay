@@ -85,6 +85,7 @@ public struct CursorShape: Equatable {
 
 public struct VideoFrame: Equatable {
     public static let keyframeFlag: UInt8 = 0x01
+    public static let hevcFlag: UInt8 = 0x02
     public var ptsNanos: UInt64
     public var flags: UInt8
     public var width: UInt16
@@ -93,6 +94,7 @@ public struct VideoFrame: Equatable {
     public var payload: Data
 
     public var isKeyframe: Bool { flags & Self.keyframeFlag != 0 }
+    public var isHEVC: Bool { flags & Self.hevcFlag != 0 }
 
     public init(ptsNanos: UInt64, flags: UInt8, width: UInt16, height: UInt16, payload: Data) {
         self.ptsNanos = ptsNanos; self.flags = flags

@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M8 done (tag `m8`). M7 feel test passed (human: "Feels great", 2026-11-22). M8 done (tag `m8`). Next: M9 quality/latency tuning. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
+**Current milestone:** M9 done (tag `m9`). M7 feel test passed (human: "Feels great", 2026-11-22). M9 done (tag `m9`): defaults now HEVC 60 fps 12 Mbps (see docs/tuning.md). Human checkpoint: final judgement on latency and image quality. Added to the plan: M12 packaged install/uninstall (human request), M13 optional lid-closed.
 
 ## Machines
 
@@ -31,6 +31,8 @@ All pass except link speed:
 
 ## Last test results
 
+- M9 (`scripts/m9-tune.sh`, 2 rounds): best = HEVC 60 fps 12 Mbps, median 32.7 / p95 45.1 ms, 57.2 fps, gap std 6.0 ms. Full regression M3-M8 passes with the new defaults (M3 similarity 0.960).
+- Regression caught a bug from the M->Z pause rename: the key-script table mapped "m" to Z. Fixed; lesson: run the full test suite after any blanket rename.
 - M8 (`scripts/m8-test.sh`): client killed -> host waits, restarted client served with keyframe first; host killed and restarted after ~1 s -> client reconnected 1372 ms after the drop, keyframe first, session continued; without the flag the client quits at once (Mutual kill); escape hatch stops a --allow-reconnect host.
 - M7 + pause (`scripts/m7-test.sh`): all 13 checks pass, incl. pause hides the mirror, resume brings it back, connection kept.
 - M7 (`scripts/m7-test.sh`): event tap running on the iMac; Cmd-Tab and Cmd-Space typed on the iMac reached the host with the Cmd flag; cursor shape delivered; escape hatch ended the session cleanly on both sides (no processes left).

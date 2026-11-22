@@ -11,7 +11,7 @@ import Shared
 //   --request-permissions          show the system permission prompts, then print status
 //   --encoder-test                 encode synthetic frames (no permissions needed)
 //   --capture-test                 capture the main display + encode (M2 acceptance test)
-//     --duration <s>  (10)  --fps <n> (30)  --bitrate <Mbps> (30)  --hevc
+//     --duration <s>  (10)  --fps <n> (60)  --bitrate <Mbps> (12)  --h264 (default HEVC)
 //     --stats         print a JSON stats line every second
 //     --no-pattern    don't open the animated test-pattern window (capture-test)
 //   --compare <a.png> <b.png>      print image similarity 0...1
@@ -58,10 +58,12 @@ if flag("--request-permissions") {
 }
 
 let duration = value("--duration", 10)
-let fps = Int32(value("--fps", 30))
-let bitrate = Int(value("--bitrate", 30) * 1_000_000)
-let codec = flag("--hevc") ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264
-let codecName = flag("--hevc") ? "hevc" : "h264"
+// Defaults from M9 tuning (docs/tuning.md): HEVC, 60 fps, 12 Mbps.
+let fps = Int32(value("--fps", 60))
+let bitrate = Int(value("--bitrate", 12) * 1_000_000)
+let useHEVC = !flag("--h264")
+let codec = useHEVC ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264
+let codecName = useHEVC ? "hevc" : "h264"
 let printStats = flag("--stats")
 
 /// Pass/fail criteria shared by both tests (plan M2): >= 25 fps, hardware, bytes > 0, no errors.
@@ -220,7 +222,8 @@ if flag("--serve") {
     }
 
     func onEncoded(_ out: VideoEncoder.Output) {
-        let frame = VideoFrame(ptsNanos: out.ptsNanos, flags: out.isKeyframe ? VideoFrame.keyframeFlag : 0,
+        let frame = VideoFrame(ptsNanos: out.ptsNanos,
+                               flags: (out.isKeyframe ? VideoFrame.keyframeFlag : 0) | (codec == kCMVideoCodecType_HEVC ? VideoFrame.hevcFlag : 0),
                                width: UInt16(width), height: UInt16(height), payload: out.annexB)
         if server.send(frame) {
             stats.frameEncoded(bytes: out.annexB.count, keyframe: out.isKeyframe, encodeNanos: out.encodeNanos)
