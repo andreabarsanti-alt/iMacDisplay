@@ -15,14 +15,10 @@ mkdir -p logs
 T=$(mktemp -d /tmp/rm-shot.XXXXXX)
 # macOS remembers the last selection (com.apple.screencapture last-selection); start
 # from a known one in the middle of the screen and put the user's value back afterwards.
-OLDSEL=$(defaults export com.apple.screencapture - 2>/dev/null | plutil -extract last-selection json -o - - 2>/dev/null)
-restore_sel() {
-  if [ -n "$OLDSEL" ]; then
-    defaults write com.apple.screencapture last-selection -dict \
-      X "$(plutil -extract X raw -o - - <<<"$OLDSEL")" Y "$(plutil -extract Y raw -o - - <<<"$OLDSEL")" \
-      Width "$(plutil -extract Width raw -o - - <<<"$OLDSEL")" Height "$(plutil -extract Height raw -o - - <<<"$OLDSEL")"
-  else defaults delete com.apple.screencapture last-selection 2>/dev/null; fi
-}
+# Save the whole screenshot settings domain and import it back afterwards: rewriting
+# values with `defaults write -dict` stores them as text, which crashes screencapture.
+defaults export com.apple.screencapture "$T/screencapture-orig.plist" 2>/dev/null
+restore_sel() { [ -f "$T/screencapture-orig.plist" ] && defaults import com.apple.screencapture "$T/screencapture-orig.plist"; }
 cleanup() { pkill -9 -f /usr/sbin/screencapture 2>/dev/null; killall screencaptureui 2>/dev/null; restore_sel; rm -rf "$T"; }
 trap cleanup EXIT
 swift build -q || exit 1
@@ -39,7 +35,10 @@ SW
 swiftc -o "$T/k" "$T/k.swift" || exit 1
 cleanup_shot() { pkill -9 -f /usr/sbin/screencapture 2>/dev/null; killall screencaptureui 2>/dev/null; }
 cleanup_shot
-defaults write com.apple.screencapture last-selection -dict X 500 Y 300 Width 400 Height 300
+defaults export com.apple.screencapture "$T/sc.plist" 2>/dev/null || plutil -create xml1 "$T/sc.plist"
+plutil -remove last-selection "$T/sc.plist" 2>/dev/null
+plutil -insert last-selection -json '{"X":500,"Y":300,"Width":400,"Height":300}' "$T/sc.plist"
+defaults import com.apple.screencapture "$T/sc.plist"
 sleep 1
 "$T/k"; sleep 1.5
 screencapture -x "$T/before.png"
