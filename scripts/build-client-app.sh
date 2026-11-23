@@ -6,7 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -q --product RemoteMirrorClient
 APP=.build/RemoteMirrorClient.app
-rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS"
+rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp .build/debug/RemoteMirrorClient "$APP/Contents/MacOS/RemoteMirrorClient"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -19,6 +20,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>0.7</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>NSLocalNetworkUsageDescription</key><string>Connects to the MacBook over the direct Ethernet cable.</string>
 </dict></plist>
 PLIST

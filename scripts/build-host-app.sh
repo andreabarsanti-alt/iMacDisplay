@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 swift build -q -c release --arch arm64 --product RemoteMirrorHostApp
 BIN=$(swift build -c release --arch arm64 --show-bin-path)
 APP=.build/RemoteMirror.app
-rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS"
+rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp "$BIN/RemoteMirrorHostApp" "$APP/Contents/MacOS/RemoteMirror"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -21,6 +22,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>NSLocalNetworkUsageDescription</key><string>Shares this screen with the iMac over the direct Ethernet cable.</string>
 </dict></plist>
 PLIST

@@ -5,3 +5,4 @@ STOP
 *.pid
 logs/
 dist/
+packaging/AppIcon-preview.png

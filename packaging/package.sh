@@ -21,6 +21,7 @@ plist() { # id name exe uielement
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   $( [ "$4" = 1 ] && echo '<key>LSUIElement</key><true/>' )
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>NSLocalNetworkUsageDescription</key><string>Uses the direct Ethernet cable between the MacBook and the iMac.</string>
 </dict></plist>
 PLIST
@@ -28,7 +29,8 @@ PLIST
 
 pkg() { # role dir binary id uielement installer
   local role=$1 dir=dist/$2 bin=$3 id=$4 ui=$5 inst=$6
-  mkdir -p "$dir/RemoteMirror.app/Contents/MacOS"
+  mkdir -p "$dir/RemoteMirror.app/Contents/MacOS" "$dir/RemoteMirror.app/Contents/Resources"
+  cp packaging/AppIcon.icns "$dir/RemoteMirror.app/Contents/Resources/AppIcon.icns"
   cp "$bin" "$dir/RemoteMirror.app/Contents/MacOS/RemoteMirror"
   plist "$id" RemoteMirror RemoteMirror "$ui" > "$dir/RemoteMirror.app/Contents/Info.plist"
   codesign -f -s - "$dir/RemoteMirror.app" 2>/dev/null   # ad-hoc; re-signed locally at install
