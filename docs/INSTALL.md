@@ -47,6 +47,21 @@ The installer removes the download quarantine flag from the app it installs.
 | iMac | `--login-item` | start the waiting app at login |
 | iMac | `--keep-pairing-file` | don't delete the pairing file after import |
 
+## Lid closed (HDMI dummy plug)
+
+To keep using a MacBook from the iMac with its lid closed, macOS needs all of these
+at the moment the lid closes:
+
+- the **charger connected** (on battery a closed MacBook always sleeps; no app can
+  prevent it)
+- the **HDMI dummy plug** in, showing as a second display in System Settings > Displays
+  (no HDMI port: use a USB-C to HDMI adapter)
+- on an **Intel** MacBook also an external keyboard or mouse (USB or Bluetooth)
+- RemoteMirror v1.1 or later, **already sharing**
+
+RemoteMirror then shares the dummy at 2560x1440 HiDPI (the iMac's native 5K) at 30 fps
+by default (menu: 5K frame rate). Start with the lid open, then close it.
+
 ## Uninstall
 
 `./uninstall.sh` in the same package folder, on each Mac:
