@@ -5,7 +5,7 @@
 # The target Macs need no developer tools: the installers sign locally with codesign.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION=$(git describe --tags --always)
+VERSION=$(git describe --tags --match 'v*' --always)
 rm -rf dist; mkdir -p dist
 
 plist() { # id name exe uielement
