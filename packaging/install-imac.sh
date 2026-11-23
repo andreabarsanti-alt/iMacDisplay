@@ -30,7 +30,7 @@ else
 fi
 
 say "Pairing key"
-if [ -n "$PAIR" ] && ! K=$(tr -d '[:space:]' < "$PAIR" 2>/dev/null); then
+if [ -n "$PAIR" ] && ! K=$( { tr -d '[:space:]' < "$PAIR"; } 2>/dev/null ); then
   # e.g. ~/Desktop is privacy-protected for SSH sessions
   if [ -f "$STATE/psk" ]; then warn "cannot read $PAIR (permission); keeping the existing key"; PAIR=""
   else die "cannot read $PAIR (permission): move it next to install.sh or pass --pairing-file"; fi
