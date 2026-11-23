@@ -19,6 +19,11 @@ mode; live capture switching on display changes (CGDisplay reconfiguration callb
 capture-lost recovery) without ending the session; input and cursor follow the shared
 display. Test: mid-session switch in ~60 ms, iMac continues at 57 fps, clicks exact.
 
+**Verified with the plug (2026-11-23, human + logs):** dummy "HDP-V104" plugged in while
+sharing the built-in display -> app set it to 2560x1440 HiDPI (5120x2880 px, the iMac's
+native 5K) and switched capture live in 1.26 s; the iMac got 5120x2880 without
+reconnecting; lid closed, session continued ("it does, lovely").
+
 **Still to verify with the plug:** lid-closed 30 min run, the 16:9 mode on the real
 dummy, the switch when the lid actually closes, latency at 5120x2880.
 

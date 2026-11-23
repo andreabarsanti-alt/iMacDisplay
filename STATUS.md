@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- **M13 with the HDMI dummy (2026-11-23, human):** plugged in mid-session -> dummy set to 2560x1440 HiDPI (5120x2880 px), live switch 1.26 s, iMac shows native 5K, lid closed and the session continues. Pending: 30-min lid-closed run, latency/tuning at 5120x2880.
 - **Feedback 2026-11-23 (items 2, 3, 5):**
   - Disconnections: the MacBook's idle sleep is 1 min; injected input does reset the idle timer, but any pause without input let the MacBook sleep and the app (by design) ended the session. Now both apps hold IOPM assertions while sharing (MacBook: no idle system/display sleep, so no auto-lock; iMac: display stays on), released at stop. `scripts/fb-awake-test.sh` passes. Deliberate sleep / lid close / manual screen lock still stop the session.
   - Timestamped logs: `~/Library/Logs/RemoteMirror/MacBook.log` and `iMac.log`; MacBook menu shows "Last stopped <time>: <reason>" and "Open log".
