@@ -12,8 +12,11 @@ enum SelfTest {
     static func runIfRequested(_ m: HostAppModel) {
         let args = CommandLine.arguments
         func value(_ n: String) -> String? { args.firstIndex(of: n).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+        let selfTest = args.contains { $0.hasPrefix("--self-test") }
+        guard selfTest || args.contains("--check-permissions") || args.contains("--request-permissions") else { return }
         m.synthetic = args.contains("--synthetic")
-        m.log = { line in if args.contains("--verbose") { print(line) } }
+        // Only self-tests are quiet by default; the normal app logs everything (FileLog).
+        if selfTest { m.log = { line in if args.contains("--verbose") { print(line) } } }
         setvbuf(stdout, nil, _IOLBF, 0)
         if args.contains("--check-permissions") || args.contains("--request-permissions") {
             // Used by the installer: run as the installed app so macOS attributes the request to it.
