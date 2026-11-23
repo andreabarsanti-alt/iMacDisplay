@@ -12,7 +12,9 @@ import Shared
 public final class HostSession {
     public struct Config {
         public var key: Data
-        public var fps: Int32 = 60
+        /// Explicit frame rate; nil = per display (60, or `fpsAbove4K` above 4K).
+        public var fps: Int32? = nil
+        public var fpsAbove4K: Int32 = 30
         public var bitrate = 12_000_000
         public var codec: CMVideoCodecType = kCMVideoCodecType_HEVC
         public var synthetic = false
@@ -25,6 +27,8 @@ public final class HostSession {
         public var allowedPeer = WireProtocol.clientAddress
         /// Which display to share; `automatic` follows the lid (external when present).
         public var displayChoice: DisplayChoice = .automatic
+        /// Cap on the captured width in pixels (nil = native). Fewer pixels encode faster.
+        public var maxCaptureWidth: Int?
         /// Switch an external display (HDMI dummy) to a 16:9 HiDPI mode that fills the iMac.
         public var fitExternalForIMac = true
         /// Test hook: pretend a permission is missing ("screen_recording" / "accessibility").
@@ -76,6 +80,8 @@ public final class HostSession {
     /// Display currently shared (0 while synthetic).
     public var sharedDisplay: CGDirectDisplayID { capturer?.displayID ?? 0 }
     public private(set) var displaySwitches = 0
+    /// Frame rate of the current capture.
+    public private(set) var currentFps: Int32 = 60
     /// Why the last session ended (for the menu and the log).
     public private(set) var lastStopReason: String?
     /// Keeps the MacBook and its display from idling while sharing.
@@ -111,7 +117,8 @@ public final class HostSession {
             try preflight()
             wire()
             if config.synthetic {
-                let s = SyntheticSource(fps: config.fps)
+                currentFps = config.fps ?? 60
+                let s = SyntheticSource(fps: currentFps)
                 synth = s
                 width = Int32(s.width); height = Int32(s.height)
             } else {
@@ -119,7 +126,7 @@ public final class HostSession {
                 do { try await startCapture(on: pickDisplay()) } catch { throw StartError.capture(error.localizedDescription) }
                 registerDisplayWatch()
             }
-            encoder = try VideoEncoder(width: width, height: height, fps: config.fps, bitrate: config.bitrate,
+            encoder = try VideoEncoder(width: width, height: height, fps: currentFps, bitrate: config.bitrate,
                                        codec: config.codec) { [weak self] out in self?.onEncoded(out) }
             do {
                 try await server.start()
@@ -219,13 +226,19 @@ public final class HostSession {
                                    // The display may have gone away (lid closed): try another before failing.
                                    DispatchQueue.main.async { self?.captureLost(e) }
                                })
-        try await c.start(fps: config.fps, displayID: display?.id, nativePixels: nativePixels, showsCursor: config.videoCursor)
+        currentFps = config.fps ?? display.map { d -> Int32 in
+            var w = nativePixels ? d.pixelWidth : d.width, h = nativePixels ? d.pixelHeight : d.height
+            if let m = config.maxCaptureWidth, w > m { h = h * m / w; w = m }
+            return Displays.defaultFps(pixelWidth: w, pixelHeight: h, fpsAbove4K: config.fpsAbove4K)
+        } ?? 60
+        try await c.start(fps: currentFps, displayID: display?.id, nativePixels: nativePixels, showsCursor: config.videoCursor,
+                          maxWidth: config.maxCaptureWidth)
         capturer = c
         width = Int32(c.width); height = Int32(c.height)
         injector.displayID = c.displayID
         cursor?.displayID = c.displayID
         let label = Displays.current().first { $0.id == c.displayID }?.label ?? "display \(c.displayID)"
-        log("{\"event\":\"capturing\",\"display\":\(c.displayID),\"label\":\"\(label)\",\"width\":\(width),\"height\":\(height)}")
+        log("{\"event\":\"capturing\",\"display\":\(c.displayID),\"label\":\"\(label)\",\"width\":\(width),\"height\":\(height),\"fps\":\(currentFps)}")
     }
 
     /// Restarts capture (new display or new size) without ending the session: the iMac
@@ -244,7 +257,7 @@ public final class HostSession {
         oldEncoder?.invalidate()
         do {
             try await startCapture(on: display)
-            encoder = try VideoEncoder(width: width, height: height, fps: config.fps, bitrate: config.bitrate,
+            encoder = try VideoEncoder(width: width, height: height, fps: currentFps, bitrate: config.bitrate,
                                        codec: config.codec) { [weak self] out in self?.onEncoded(out) }
             displaySwitches += 1
             log(String(format: "{\"event\":\"display_switched\",\"reason\":\"%@\",\"width\":%d,\"height\":%d,\"ms\":%.0f}",
@@ -270,7 +283,9 @@ public final class HostSession {
         displayCheckPending = false
         guard state.isActive, !config.synthetic, !switching, let c = capturer else { return }
         guard let want = pickDisplay() else { return }
-        let px = nativePixels ? (want.pixelWidth & ~1, want.pixelHeight & ~1) : (want.width & ~1, want.height & ~1)
+        var px = nativePixels ? (want.pixelWidth, want.pixelHeight) : (want.width, want.height)
+        if let m = config.maxCaptureWidth, px.0 > m { px = (m, px.1 * m / px.0) }
+        px = (px.0 & ~1, px.1 & ~1)
         if want.id != c.displayID || px.0 != c.width || px.1 != c.height {
             Task { @MainActor in await self.restartCapture(on: want, reason: want.id != c.displayID ? "display changed" : "resolution changed") }
         }

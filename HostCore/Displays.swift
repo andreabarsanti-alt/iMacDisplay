@@ -62,6 +62,15 @@ public enum Displays {
         }
     }
 
+    // MARK: Frame rate per display (pure, unit-tested)
+
+    /// Above 4K the MacBook's encoder can't keep 60 fps (measured ~40 ms/frame at 5K):
+    /// default to `fpsAbove4K` there (30, chosen by the human after a live comparison);
+    /// everything else keeps 60 (M9).
+    public static func defaultFps(pixelWidth: Int, pixelHeight: Int, fpsAbove4K: Int32 = 30) -> Int32 {
+        pixelWidth * pixelHeight > 3840 * 2160 ? fpsAbove4K : 60
+    }
+
     // MARK: Fitting the iMac (16:9)
 
     public struct Mode: Equatable {

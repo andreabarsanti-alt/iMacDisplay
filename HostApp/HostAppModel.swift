@@ -23,6 +23,8 @@ final class HostAppModel: ObservableObject {
     @Published var quality: Quality { didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") } }
     @Published var displayChoice: DisplayChoice { didSet { UserDefaults.standard.set(displayChoice.rawValue, forKey: "display") } }
     @Published var fitForIMac: Bool { didSet { UserDefaults.standard.set(fitForIMac, forKey: "fitForIMac") } }
+    /// Frame rate when sharing a display above 4K (e.g. the dummy at 5K): 30 (default) or 60.
+    @Published var fps5K: Int { didSet { UserDefaults.standard.set(fps5K, forKey: "fps5K") } }
     @Published private(set) var displaysLine = ""
     @Published private(set) var lastStopLine = ""
 
@@ -42,6 +44,7 @@ final class HostAppModel: ObservableObject {
         quality = Quality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .lowLatency
         displayChoice = DisplayChoice(rawValue: UserDefaults.standard.string(forKey: "display") ?? "") ?? .automatic
         fitForIMac = UserDefaults.standard.object(forKey: "fitForIMac") as? Bool ?? true
+        fps5K = UserDefaults.standard.object(forKey: "fps5K") as? Int ?? 30
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -78,6 +81,7 @@ final class HostAppModel: ObservableObject {
         cfg.simulateMissingPermission = simulateMissingPermission
         cfg.displayChoice = displayChoice
         cfg.fitExternalForIMac = fitForIMac
+        cfg.fpsAbove4K = Int32(fps5K)
         let s = HostSession(config: cfg)
         s.log = log
         s.onState = { [weak self, weak s] st in Task { @MainActor in
@@ -112,7 +116,7 @@ final class HostAppModel: ObservableObject {
         }
         if s.state == .sharing {
             let snap = s.stats.snapshot(seconds: 1)
-            statsLine = String(format: "iMac connected · %.0f fps · %.1f Mbps", snap.fps, snap.mbps)
+            statsLine = String(format: "iMac connected · %d×%d · %.0f fps · %.1f Mbps", s.width, s.height, snap.fps, snap.mbps)
         } else {
             _ = s.stats.snapshot(seconds: 1)
             statsLine = ""

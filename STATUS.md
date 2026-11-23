@@ -1,6 +1,6 @@
 # STATUS
 
-**Current milestone:** M12 done (tag `m12`), releases v1.0 / v1.0.1 on GitHub. M13 (lid closed) built and tested as far as possible without the HDMI dummy plug; lid-closed verification pending the plug.
+**Current milestone:** M13 done (tag `m13`), release **v1.1** (lid closed with an HDMI dummy at native 5K, feedback fixes, app icon). Pending: a 30-min lid-closed run in real use; Gigabit cable (would mainly cut 5K keyframe spikes).
 
 ## Machines
 
@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- **5K tuning (lid closed, dummy at 2560x1440 HiDPI = 5120x2880):** HEVC 60 fps can't keep up (encode ~40 ms; median 80-90 / p95 116-155 ms); 5K 30 fps 58 / 80 ms; 4K-capped 60 fps 51 / 72 ms; 1440p 60 fps 51 / 59 ms. Live comparison by the human: 4K "not sharp enough", 5K 30 fps "looks good" -> default above 4K is 30 fps (menu: 5K frame rate 30/60); built-in stays 60 fps. p95 at 5K grows with bitrate (bigger keyframes on the 100 Mbps link).
 - **M13 with the HDMI dummy (2026-11-23, human):** plugged in mid-session -> dummy set to 2560x1440 HiDPI (5120x2880 px), live switch 1.26 s, iMac shows native 5K, lid closed and the session continues. Pending: 30-min lid-closed run, latency/tuning at 5120x2880.
 - **Feedback 2026-11-23 (items 2, 3, 5):**
   - Disconnections: the MacBook's idle sleep is 1 min; injected input does reset the idle timer, but any pause without input let the MacBook sleep and the app (by design) ended the session. Now both apps hold IOPM assertions while sharing (MacBook: no idle system/display sleep, so no auto-lock; iMac: display stays on), released at stop. `scripts/fb-awake-test.sh` passes. Deliberate sleep / lid close / manual screen lock still stop the session.

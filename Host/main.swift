@@ -27,6 +27,7 @@ import HostCore
 //     --view-only     don't inject keyboard/mouse events from the iMac
 //     --display auto|builtin|external   which display to share (default auto)
 //     --no-fit        don't switch an external display to 16:9 for the iMac
+//     --max-width <px> cap the captured width (e.g. 3840 for 4K)
 //     --test-resize-after <s>  switch capture size mid-session (M13 test)
 //     --log-input     print every input event received (JSON)
 //     --allow-reconnect  keep listening when the client drops (escape hatch still stops)
@@ -186,7 +187,8 @@ if flag("--serve") {
     app.setActivationPolicy(.accessory)
 
     var cfg = HostSession.Config(key: key)
-    cfg.fps = fps; cfg.bitrate = bitrate; cfg.codec = codec
+    cfg.fps = args.contains("--fps") ? fps : nil   // default: per display (60, or 30 above 4K)
+    cfg.bitrate = bitrate; cfg.codec = codec
     cfg.synthetic = flag("--synthetic")
     cfg.nativePixels = !flag("--points")
     cfg.videoCursor = flag("--video-cursor")
@@ -200,6 +202,7 @@ if flag("--serve") {
         cfg.displayChoice = ["builtin": .builtin, "external": .external][args[i + 1]] ?? .automatic
     }
     cfg.fitExternalForIMac = !flag("--no-fit")
+    if let i = args.firstIndex(of: "--max-width"), i + 1 < args.count { cfg.maxCaptureWidth = Int(args[i + 1]) }
     let session = HostSession(config: cfg)
 
     // Test windows and hooks (CLI only).

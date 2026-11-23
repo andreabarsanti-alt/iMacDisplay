@@ -1,7 +1,6 @@
 # Roadmap
 
-Done: M1-M12 (see `STATUS.md`). M13 in progress: everything that works without the
-plug is built and tested (`scripts/m13-test.sh`); the lid-closed run waits for the plug.
+Done: M1-M13 (see `STATUS.md`), release v1.1. Open: a 30-min lid-closed run in real use.
 
 ## M13: lid closed (clamshell) with an HDMI dummy plug
 
@@ -23,6 +22,10 @@ display. Test: mid-session switch in ~60 ms, iMac continues at 57 fps, clicks ex
 sharing the built-in display -> app set it to 2560x1440 HiDPI (5120x2880 px, the iMac's
 native 5K) and switched capture live in 1.26 s; the iMac got 5120x2880 without
 reconnecting; lid closed, session continued ("it does, lovely").
+
+**5K result:** native 5K at 30 fps is the default on the dummy (human choice after a live
+comparison with 4K and 1440p at 60 fps); 60 fps selectable. A Gigabit cable should cut
+the keyframe spikes at 5K.
 
 **Still to verify with the plug:** lid-closed 30 min run, the 16:9 mode on the real
 dummy, the switch when the lid actually closes, latency at 5120x2880.

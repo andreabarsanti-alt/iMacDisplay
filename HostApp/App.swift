@@ -61,6 +61,11 @@ struct MenuContent: View {
         .disabled(model.state.isActive)
         Toggle("Fit external display to iMac (16:9)", isOn: $model.fitForIMac)
             .disabled(model.state.isActive)
+        Picker("5K frame rate", selection: $model.fps5K) {
+            Text("30 fps (less lag)").tag(30)
+            Text("60 fps (smoother, more lag)").tag(60)
+        }
+        .disabled(model.state.isActive)
         if !model.displaysLine.isEmpty { Text(model.displaysLine) }
         Picker("Quality", selection: $model.quality) {
             ForEach(HostAppModel.Quality.allCases) { Text($0.rawValue).tag($0) }

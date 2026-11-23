@@ -48,3 +48,13 @@ import Testing
         #expect(Displays.bestModeForIMac(modes)?.width == 3840)
     }
 }
+
+@Suite struct FrameRatePolicyTests {
+    @Test func builtinAndUpTo4KKeep60() {
+        #expect(Displays.defaultFps(pixelWidth: 3024, pixelHeight: 1964) == 60)
+        #expect(Displays.defaultFps(pixelWidth: 3840, pixelHeight: 2160) == 60)
+        #expect(Displays.defaultFps(pixelWidth: 2560, pixelHeight: 1440) == 60)
+    }
+    @Test func fiveKDefaultsTo30() { #expect(Displays.defaultFps(pixelWidth: 5120, pixelHeight: 2880) == 30) }
+    @Test func fiveKCanBe60() { #expect(Displays.defaultFps(pixelWidth: 5120, pixelHeight: 2880, fpsAbove4K: 60) == 60) }
+}
