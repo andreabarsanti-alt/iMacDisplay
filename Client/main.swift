@@ -23,6 +23,8 @@ import Shared
 //   --no-tap                don't capture system shortcuts (Cmd-Tab...) with the event tap
 //   --test-shortcuts        post Cmd-Tab + Cmd-Space on the iMac after connecting (M7 test)
 //   --test-escape <s>       post Ctrl-Option-Cmd-Q after N seconds (M7 test)
+//   --test-screenshot       post Ctrl-Cmd-Shift-4 on the iMac, then drag a selection (feedback item 5)
+//   --test-drag x0,y0,x1,y1 drag through the mouse path 3 s after connecting (normalized coords)
 //   --test-pause            post Ctrl-Option-Cmd-Z twice (pause, resume) after connecting
 //   --mouse-script <spec>   click/scroll host targets "nx,ny;..." (M6 test)
 //   --host <ip> --key <path>
@@ -61,6 +63,7 @@ if flag("--verify-vectors") {
 }
 
 setvbuf(stdout, nil, _IOLBF, 0)
+if num("--duration") == nil && !flag("--once") { FileLog.captureStdout(name: "iMac") }
 print(BuildInfo.banner("RemoteMirrorClient"))
 
 let key: Data
@@ -94,6 +97,8 @@ var firstReady = true
 var paused = false
 var sessionActive = false
 var sessions = 0
+/// Keeps the iMac and its display awake while it shows the MacBook.
+let power = PowerAssertion()
 
 let markerSpec: (x: Double, y: Double, pitch: Double)? = str("--marker").flatMap { s in
     let p = s.split(separator: ",").compactMap { Double($0) }
@@ -162,6 +167,7 @@ func sessionEnded(code: Int32, reason: String) {
     guard waitingMode else { finish(code: code, reason: reason) }
     guard sessionActive else { return }   // video and input both report the end; handle once
     sessionActive = false
+    power.release()
     client.onClosed = nil; inputClient?.onClosed = nil
     inputClient?.disconnect(.normal)
     client.disconnect(.normal)
@@ -210,6 +216,7 @@ func startSession() {
         firstReady = false
         sessionActive = true
         sessions += 1
+        power.hold(reason: "RemoteMirror: showing the MacBook", system: true)
         idle.hide()
         if !paused { display.show() }
         print("{\"event\":\"session_started\",\"n\":\(sessions),\"mirror_visible\":\(display.window.isVisible)}")
@@ -325,7 +332,57 @@ func runMouseScript(_ spec: String) {
     }
 }
 
+/// M-feedback item 5: screenshot shortcut on the iMac keyboard, then a drag through the
+/// normal mouse path (normalized video coords).
+func runScreenshotTest() {
+    ShortcutTap.postScreenshotShortcut()
+    print("{\"event\":\"screenshot_shortcut_posted\"}")
+    let v = display.inputView!
+    func at(_ x: Double, _ y: Double) -> (Float32, Float32) { v.normalize(v.viewPoint(nx: x, ny: y)) }
+    var steps: [InputEvent] = []
+    let (ax, ay) = at(0.40, 0.30), (bx, by) = at(0.47, 0.38)
+    steps.append(InputEvent(kind: .mouseMove, x: ax - 0.005, y: ay))
+    steps.append(InputEvent(kind: .mouseMove, x: ax, y: ay))
+    steps.append(InputEvent(kind: .mouseDown, code: InputView.mouseCode(button: 0, clicks: 1), x: ax, y: ay))
+    for i in 1...10 {
+        let f = Float32(i) / 10
+        steps.append(InputEvent(kind: .mouseMove, x: ax + (bx - ax) * f, y: ay + (by - ay) * f))
+    }
+    steps.append(InputEvent(kind: .mouseUp, code: InputView.mouseCode(button: 0, clicks: 1), x: bx, y: by))
+    for (i, e) in steps.enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + Double(i) * 0.05) { inputClient?.send(e) }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + Double(steps.count) * 0.05 + 0.2) {
+        print("{\"event\":\"screenshot_drag_sent\",\"events\":\(steps.count)}")
+    }
+}
+
+/// Drags from (x0,y0) to (x1,y1) in normalized video coordinates through the normal mouse path.
+func runTestDrag(_ spec: String) {
+    let p = spec.split(separator: ",").compactMap { Double($0) }
+    guard p.count == 4 else { print("FAIL: --test-drag x0,y0,x1,y1"); return }
+    let v = display.inputView!
+    func at(_ x: Double, _ y: Double) -> (Float32, Float32) { v.normalize(v.viewPoint(nx: x, ny: y)) }
+    let (ax, ay) = at(p[0], p[1]), (bx, by) = at(p[2], p[3])
+    var steps = [InputEvent(kind: .mouseMove, x: ax - 0.002, y: ay), InputEvent(kind: .mouseMove, x: ax, y: ay),
+                 InputEvent(kind: .mouseDown, code: InputView.mouseCode(button: 0, clicks: 1), x: ax, y: ay)]
+    for i in 1...20 { let f = Float32(i) / 20; steps.append(InputEvent(kind: .mouseMove, x: ax + (bx - ax) * f, y: ay + (by - ay) * f)) }
+    steps.append(InputEvent(kind: .mouseUp, code: InputView.mouseCode(button: 0, clicks: 1), x: bx, y: by))
+    for (i, e) in steps.enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.03) { inputClient?.send(e) }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Double(steps.count) * 0.03 + 0.2) {
+        print("{\"event\":\"test_drag_sent\",\"events\":\(steps.count)}")
+    }
+}
+
 func runTestScripts() {
+    if let spec = str("--test-drag") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { runTestDrag(spec) }
+    }
+    if flag("--test-screenshot") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { runScreenshotTest() }
+    }
     if flag("--test-shortcuts") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { ShortcutTap.postTestShortcuts() }
     }

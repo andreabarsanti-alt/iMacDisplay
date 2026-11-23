@@ -82,6 +82,15 @@ final class ShortcutTap {
         }
     }
 
+    /// Self-test: posts Ctrl-Cmd-Shift-4 (screenshot of a selection, to the clipboard).
+    static func postScreenshotShortcut() {
+        let src = CGEventSource(stateID: .hidSystemState)
+        let f: CGEventFlags = [.maskControl, .maskCommand, .maskShift]
+        let d = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_4), keyDown: true); d?.flags = f; d?.post(tap: .cghidEventTap)
+        usleep(30_000)
+        let u = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_4), keyDown: false); u?.flags = f; u?.post(tap: .cghidEventTap)
+    }
+
     /// Self-test: posts the pause combination.
     static func postPause() {
         let src = CGEventSource(stateID: .hidSystemState)

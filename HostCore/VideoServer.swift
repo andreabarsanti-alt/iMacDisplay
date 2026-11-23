@@ -39,22 +39,50 @@ public final class VideoServer {
         queue = DispatchQueue(label: "server-\(config.port)", qos: .userInteractive)
     }
 
-    public func start() throws {
+    public enum ListenError: Error, CustomStringConvertible {
+        case failed(String), timeout
+        public var description: String {
+            switch self {
+            case let .failed(m): return m
+            case .timeout: return "listener did not become ready"
+            }
+        }
+    }
+
+    /// Opens the listener and returns once macOS confirms it is listening; throws if
+    /// it can't (e.g. the port is taken by another RemoteMirror), instead of
+    /// pretending to wait for the iMac.
+    public func start() async throws {
         let local = NWEndpoint.hostPort(host: NWEndpoint.Host(config.bindHost),
                                         port: NWEndpoint.Port(rawValue: config.port)!)
         let params = LinkSecurity.parameters(key: config.key, local: local)
         params.allowLocalEndpointReuse = true
         let l = try NWListener(using: params)
-        l.stateUpdateHandler = { [weak self] st in
-            switch st {
-            case .ready: self?.log("{\"event\":\"listening\",\"address\":\"\(self?.config.bindHost ?? "")\",\"port\":\(self?.config.port ?? 0)}")
-            case let .failed(e): self?.log("{\"event\":\"listener_failed\",\"error\":\"\(e)\"}")
-            default: break
-            }
-        }
-        l.newConnectionHandler = { [weak self] c in self?.accept(c) }
-        l.start(queue: queue)
         listener = l
+        l.newConnectionHandler = { [weak self] c in self?.accept(c) }
+        try await withCheckedThrowingContinuation { (k: CheckedContinuation<Void, Error>) in
+            var done = false
+            let finish: (Result<Void, Error>) -> Void = { r in
+                guard !done else { return }
+                done = true
+                k.resume(with: r)
+            }
+            l.stateUpdateHandler = { [weak self] st in
+                switch st {
+                case .ready:
+                    self?.log("{\"event\":\"listening\",\"address\":\"\(self?.config.bindHost ?? "")\",\"port\":\(self?.config.port ?? 0)}")
+                    finish(.success(()))
+                case let .failed(e):
+                    self?.log("{\"event\":\"listener_failed\",\"port\":\(self?.config.port ?? 0),\"error\":\"\(e)\"}")
+                    finish(.failure(ListenError.failed("port \(self?.config.port ?? 0): \(e)")))
+                case let .waiting(e):
+                    finish(.failure(ListenError.failed("port \(self?.config.port ?? 0): \(e)")))
+                default: break
+                }
+            }
+            l.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + 3) { finish(.failure(ListenError.timeout)) }
+        }
     }
 
     public func stop(reason: ByeReason = .hostStopped, then: (() -> Void)? = nil) {

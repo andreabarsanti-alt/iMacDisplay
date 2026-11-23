@@ -76,6 +76,10 @@ public final class HostSession {
     /// Display currently shared (0 while synthetic).
     public var sharedDisplay: CGDirectDisplayID { capturer?.displayID ?? 0 }
     public private(set) var displaySwitches = 0
+    /// Why the last session ended (for the menu and the log).
+    public private(set) var lastStopReason: String?
+    /// Keeps the MacBook and its display from idling while sharing.
+    public let power = PowerAssertion()
 
     public init(config: Config) {
         self.config = config
@@ -118,9 +122,12 @@ public final class HostSession {
             encoder = try VideoEncoder(width: width, height: height, fps: config.fps, bitrate: config.bitrate,
                                        codec: config.codec) { [weak self] out in self?.onEncoded(out) }
             do {
-                try server.start()
-                try inputServer.start()
-            } catch { throw StartError.listener("\(error)") }
+                try await server.start()
+                try await inputServer.start()
+            } catch {
+                let inUse = "\(error)".contains("Address already in use")
+                throw StartError.listener(inUse ? "port already in use (is another RemoteMirror sharing?)" : "\(error)")
+            }
             synth?.start { [weak self] pb, pts in self?.onFrame(pb, pts) }
             if !config.videoCursor {
                 let t = CursorTracker()
@@ -131,6 +138,8 @@ public final class HostSession {
                 t.start()
                 cursor = t
             }
+            power.hold(reason: "RemoteMirror: sharing this screen with the iMac", system: true)
+            log("{\"event\":\"power\",\"keep_awake\":\(power.isHeld)}")
             transition(.listening)
         } catch let e as StartError {
             await teardown()
@@ -329,6 +338,7 @@ public final class HostSession {
                 return
             }
             self.log("{\"event\":\"stopping\",\"reason\":\"\(reason)\"}")
+            self.lastStopReason = reason
             self.transition(.stopRequested)
             Task { @MainActor in
                 await self.teardown()
@@ -348,6 +358,7 @@ public final class HostSession {
     @MainActor
     private func teardown() async {
         unregisterDisplayWatch()
+        power.release()
         injector.stop()
         cursor?.stop(); cursor = nil
         synth?.stop(); synth = nil
@@ -370,6 +381,7 @@ public final class HostSession {
     private func fail(_ e: StartError, raw: String? = nil) {
         guard state.isActive else { return }
         let msg = raw ?? e.description
+        lastStopReason = msg
         log("{\"event\":\"error\",\"reason\":\"\(msg)\"}")
         Task { @MainActor in
             transition(.stopRequested)

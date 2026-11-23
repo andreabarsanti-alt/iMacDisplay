@@ -52,6 +52,9 @@ public final class InputInjector {
         injectedCount += 1
     }
 
+    /// Test-only switch (RM_NO_MOUSE_DELTAS=1) to prove the screenshot test detects the bug.
+    static let deltasDisabled = ProcessInfo.processInfo.environment["RM_NO_MOUSE_DELTAS"] != nil
+
     /// The display being shared; mouse coordinates are relative to it.
     public var displayID: CGDirectDisplayID = CGMainDisplayID()
 
@@ -68,6 +71,7 @@ public final class InputInjector {
 
     private func injectMouse(_ e: InputEvent) {
         let p = displayPoint(nx: e.x, ny: e.y)
+        let previousPoint = lastPoint == .zero ? p : lastPoint   // first event: no jump from (0,0)
         lastPoint = p
         let button = Int(e.code & 0xff), clicks = Int(e.code >> 8)
         let cgButton: CGMouseButton = button == 0 ? .left : button == 1 ? .right : .center
@@ -86,6 +90,16 @@ public final class InputInjector {
             else { type = .mouseMoved }
         }
         guard let ev = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: cgButton) else { return }
+        // Movement since the previous event. Most apps only read the position, but some
+        // (e.g. the screenshot toolbar's move/resize handles) only read these deltas:
+        // without them a drag looks like no movement at all (feedback item 5).
+        if !Self.deltasDisabled && (type == .mouseMoved || type == .leftMouseDragged || type == .rightMouseDragged || type == .otherMouseDragged) {
+            ev.setIntegerValueField(.mouseEventDeltaX, value: Int64((p.x - previousPoint.x).rounded()))
+            ev.setIntegerValueField(.mouseEventDeltaY, value: Int64((p.y - previousPoint.y).rounded()))
+            ev.setDoubleValueField(.mouseEventDeltaX, value: Double(p.x - previousPoint.x))
+            ev.setDoubleValueField(.mouseEventDeltaY, value: Double(p.y - previousPoint.y))
+        }
+
         if button >= 2 { ev.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button)) }
         if e.kind != .mouseMove { ev.setIntegerValueField(.mouseEventClickState, value: Int64(max(clicks, 1))) }
         ev.flags = CGEventFlags(rawValue: UInt64(e.flags))

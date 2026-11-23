@@ -31,6 +31,13 @@ All pass except link speed:
 
 ## Last test results
 
+- **Feedback 2026-11-23 (items 2, 3, 5):**
+  - Disconnections: the MacBook's idle sleep is 1 min; injected input does reset the idle timer, but any pause without input let the MacBook sleep and the app (by design) ended the session. Now both apps hold IOPM assertions while sharing (MacBook: no idle system/display sleep, so no auto-lock; iMac: display stays on), released at stop. `scripts/fb-awake-test.sh` passes. Deliberate sleep / lid close / manual screen lock still stop the session.
+  - Timestamped logs: `~/Library/Logs/RemoteMirror/MacBook.log` and `iMac.log`; MacBook menu shows "Last stopped <time>: <reason>" and "Open log".
+  - Screenshot selection could not be moved/resized from the iMac: the screenshot toolbar's handles read the event *deltas*, which injected events lacked. The injector now sets mouseEventDeltaX/Y. `scripts/fb-screenshot-test.sh` (with a control run, RM_NO_MOUSE_DELTAS=1, that must fail) passes.
+  - Also fixed: a second host could not listen (port in use) but claimed "Waiting for iMac"; it now fails with "port already in use".
+  - Lesson: experiments that inject keys on the MacBook must never send Esc (it reached the Terminal and interrupted the agent) and must end any screenshot session they start (a leftover overlay swallowed the input tests).
+  - Regression M3-M13 passes (M4 median 39.5 / p95 53.2 ms).
 - M13 without plug (`scripts/m13-test.sh`): display policy + 16:9 mode unit tests (38 total); mid-session capture switch 3024x1964 -> 1512x982, iMac continued at 57.4 fps to the end; clicks exact after a switch. Regression M3/M4/M6/M8/M10/M11 passes (M4 median 34.6 / p95 43.0 ms).
 - Second MacBook: installed from the v1.0 release; installer adapter name problem fixed in v1.0.1 (auto-detect).
 - M12: packages built on the MacBook (arm64 host app, x86_64 client cross-built). Sandbox-home install/uninstall on the MacBook (files, key, identity removal) found and fixed 3 installer bugs (signing failure not detected; `| grep -q` under pipefail; keychain search list edge case). Real install on both Macs with `--skip-network`: permissions carried over; installed apps pass 3 start/stop cycles with the iMac connected; real uninstall/reinstall on the iMac (app, login item, process removed; kept items kept).

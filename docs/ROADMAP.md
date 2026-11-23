@@ -45,6 +45,13 @@ closed, so "nothing listens while Idle" stays.
 - *built-in first, follow the lid* - on lid close macOS moves windows to the dummy
   and the host switches capture to it (brief blink, aspect changes 3:2 -> 16:9).
 
+## Feedback (2026-11-23)
+
+- Done: frequent disconnections (keep-awake while sharing), keep connection when the
+  MacBook would lock from idle, screenshot selection from the iMac (mouse deltas),
+  session logs.
+- Parked: share audio.
+
 ## Later ideas (not planned)
 
 - Clipboard sync (dropped 2026-11-22; AirDrop for now; protocol type reserved).

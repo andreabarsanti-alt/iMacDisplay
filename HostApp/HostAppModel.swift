@@ -24,6 +24,7 @@ final class HostAppModel: ObservableObject {
     @Published var displayChoice: DisplayChoice { didSet { UserDefaults.standard.set(displayChoice.rawValue, forKey: "display") } }
     @Published var fitForIMac: Bool { didSet { UserDefaults.standard.set(fitForIMac, forKey: "fitForIMac") } }
     @Published private(set) var displaysLine = ""
+    @Published private(set) var lastStopLine = ""
 
     private(set) var session: HostSession?
     private var timer: Timer?
@@ -79,7 +80,13 @@ final class HostAppModel: ObservableObject {
         cfg.fitExternalForIMac = fitForIMac
         let s = HostSession(config: cfg)
         s.log = log
-        s.onState = { [weak self] st in Task { @MainActor in self?.state = st } }
+        s.onState = { [weak self, weak s] st in Task { @MainActor in
+            self?.state = st
+            if (st == .idle || { if case .error = st { return true }; return false }()), let r = s?.lastStopReason {
+                let t = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .short)
+                self?.lastStopLine = "Last stopped \(t): \(r)"
+            }
+        } }
         s.onEscapeHatch = { [weak self] in Task { @MainActor in self?.stop(reason: "escape hatch on the iMac") } }
         session = s
         Task { @MainActor in try? await s.start() }
@@ -136,6 +143,8 @@ final class HostAppModel: ObservableObject {
     }
 
     func requestPermissions() { HostPermissions.request() }
+
+    func openLog() { NSWorkspace.shared.open(FileLog.url("MacBook")) }
 
     // MARK: Automatic stop
 

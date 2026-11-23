@@ -1,5 +1,6 @@
 import AppKit
 import HostCore
+import Shared
 import SwiftUI
 
 /// RemoteMirror for the MacBook: a menu bar app (no Dock icon). Sharing is started
@@ -23,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        let selfTest = CommandLine.arguments.contains { $0.hasPrefix("--self-test") || $0.hasSuffix("-permissions") }
+        if !selfTest { FileLog.captureStdout(name: "MacBook") }
         Task { @MainActor in SelfTest.runIfRequested(model) }
     }
 
@@ -48,6 +51,7 @@ struct MenuContent: View {
             .disabled(model.state == .stopping)
         Text(model.state.label)
         if !model.statsLine.isEmpty { Text(model.statsLine) }
+        if !model.state.isActive && !model.lastStopLine.isEmpty { Text(model.lastStopLine) }
         Divider()
         Toggle("Allow keyboard & mouse control", isOn: $model.allowControl)
             .disabled(model.state.isActive)
@@ -71,6 +75,7 @@ struct MenuContent: View {
             }
         }
         Button("Check link") { model.checkLink() }
+        Button("Open log") { model.openLog() }
         if !model.linkLine.isEmpty { Text(model.linkLine) }
         Divider()
         Text("Stop anytime: Ctrl-Option-Cmd-S")
