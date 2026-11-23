@@ -32,6 +32,9 @@ install_app() {
   # (capture first: `codesign | grep -q` fails under pipefail when grep exits early)
   local info; info=$(codesign -dvv "$dst" 2>&1)
   grep -q "^Authority=RemoteMirror Dev" <<<"$info" || die "could not sign $dst with the local identity"
+  # Re-register so Finder/Dock show the current icon rather than a cached one.
+  touch "$dst"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dst" 2>/dev/null || true
 
   ok "installed $dst (signed: $(codesign -d -r- "$dst" 2>&1 | tail -1 | sed 's/.*certificate leaf = //'))"
 }
