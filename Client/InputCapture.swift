@@ -10,6 +10,35 @@ final class InputView: NSView {
     var onPauseToggle: (() -> Void)?
     /// Local pointer moved (normalized video coords): drives the zero-lag cursor overlay.
     var onLocalMove: ((Float32, Float32) -> Void)?
+    /// A gesture recognised here and performed on the MacBook as a shortcut.
+    var onAction: ((InputAction) -> Void)?
+    /// Fallback (menu toggle, off by default): recognise one-finger swipes here and send
+    /// Back/Forward shortcuts. Normally the gesture companions are forwarded and the
+    /// MacBook's apps recognise swipes themselves.
+    static var pageSwipes = UserDefaults.standard.object(forKey: "pageSwipes") as? Bool ?? false
+
+    override func wantsScrollEventsForSwipeTracking(on axis: NSEvent.GestureAxis) -> Bool { axis == .horizontal }
+
+    /// Uses AppKit's own swipe recognition: it works here because the iMac receives the
+    /// real gesture from the Magic Mouse (on the MacBook injected scrolls can't complete
+    /// a swipe). Returns true if the event started a page swipe (then it isn't forwarded).
+    private func trackPageSwipe(_ e: NSEvent) -> Bool {
+        guard Self.pageSwipes, e.phase == .began, abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY),
+              NSEvent.isSwipeTrackingFromScrollEventsEnabled else { return false }
+        var done = false
+        e.trackSwipeEvent(options: [.lockDirection, .clampGestureAmount], dampenAmountThresholdMin: -1, max: 1) {
+            [weak self] amount, phase, complete, _ in
+            guard complete, !done else { return }
+            done = true
+            guard phase == .ended, amount != 0 else { return }            // cancelled: nothing
+            // Fingers moving right (positive amount) = back, like Safari.
+            let action: InputAction = amount > 0 ? .back : .forward
+            print("{\"event\":\"page_swipe\",\"action\":\"\(action)\"}")
+            self?.onAction?(action)
+        }
+        return true
+    }
+
     /// Diagnostic (--log-scroll): print every scroll event the iMac delivers to the mirror.
     static let logScroll = CommandLine.arguments.contains("--log-scroll")
 
@@ -110,6 +139,7 @@ final class InputView: NSView {
             print(String(format: "{\"event\":\"client_scroll\",\"phase\":%lu,\"momentum\":%lu,\"dx\":%.2f,\"dy\":%.2f,\"precise\":%@}",
                          e.phase.rawValue, e.momentumPhase.rawValue, e.scrollingDeltaX, e.scrollingDeltaY, e.hasPreciseScrollingDeltas ? "true" : "false"))
         }
+        if trackPageSwipe(e) { return }
         let (x, y) = normalize(convert(e.locationInWindow, from: nil))
         // Keep the gesture phase and momentum phase (Magic Mouse / trackpad): apps on the
         // MacBook use them for swipes, rubber-banding and inertia.

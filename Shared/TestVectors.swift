@@ -13,9 +13,11 @@ public enum TestVectors {
         .keyframeRequest,
         .input(InputEvent(kind: .keyDown, flags: 0x0010_0000, code: 36, x: 0.5, y: 0.25, dx: 1, dy: -1)),
         .input(InputEvent(kind: .scroll, dx: -3.5, dy: 12.25)),
+        .input(InputEvent(kind: .action, code: InputAction.back.rawValue)),
         .cursor(x: 0.125, y: 0.875, visible: true),
         .clipboard("ciao, perché? ✓"),
         .latencyEcho(marker: 0x00ab_cdef),
+        .gesture(GestureEvent(fields: [.int(55, 29), .int(110, 6), .double(113, -42.5), .int(132, 2)])),
         .cursorShape(CursorShape(width: 0.0125, height: 0.02, hotX: 0.25, hotY: 0.125, png: Data([0x89, 0x50, 0x4e, 0x47]))),
     ]
 

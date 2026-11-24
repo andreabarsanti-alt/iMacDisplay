@@ -40,6 +40,7 @@ public final class StatusItem {
         stateLine.isEnabled = false
         menu.addItem(stateLine)
         menu.addItem(.separator())
+        toggleAnchor = menu.items.count
         let quit = NSMenuItem(title: "Quit", action: #selector(Target.quit), keyEquivalent: "q")
         quit.target = target
         menu.addItem(quit)
@@ -59,9 +60,26 @@ public final class StatusItem {
         if Thread.isMainThread { run() } else { DispatchQueue.main.async(execute: run) }
     }
 
+    private var toggleAnchor = 0
+
+    /// Adds an on/off menu item above Quit; `onChange` gets the new state.
+    public func addToggle(_ title: String, isOn: Bool, onChange: @escaping (Bool) -> Void) {
+        let item = NSMenuItem(title: title, action: #selector(Target.toggle(_:)), keyEquivalent: "")
+        item.target = target
+        item.state = isOn ? .on : .off
+        target.toggles[ObjectIdentifier(item)] = onChange
+        self.item.menu?.insertItem(item, at: toggleAnchor)
+        toggleAnchor += 1
+    }
+
     private let target = Target()
     private final class Target: NSObject {
         var onQuit: (() -> Void)?
+        var toggles: [ObjectIdentifier: (Bool) -> Void] = [:]
         @objc func quit() { onQuit?() }
+        @objc func toggle(_ sender: NSMenuItem) {
+            sender.state = sender.state == .on ? .off : .on
+            toggles[ObjectIdentifier(sender)]?(sender.state == .on)
+        }
     }
 }

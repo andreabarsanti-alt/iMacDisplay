@@ -176,6 +176,10 @@ public final class HostSession {
         injector.log = log
         server.onKeyframeRequest = { [weak self] in self?.encoder?.requestKeyframe() }
         server.onLatencyEcho = { [weak self] v in self?.onLatencyEcho?(v) }
+        inputServer.onGesture = { [weak self] g in
+            guard let self, !self.config.viewOnly else { return }
+            self.injector.injectGesture(g)
+        }
         inputServer.onInput = { [weak self] e in
             guard let self else { return }
             self.onInputEvent?(e)

@@ -48,6 +48,8 @@ public final class InputInjector {
             injectMouse(e)
         case .scroll:
             injectScroll(e)
+        case .action:
+            if let a = InputAction(rawValue: e.code) { performAction(a) }
         }
         injectedCount += 1
     }
@@ -127,6 +129,7 @@ public final class InputInjector {
         guard let ev = CGEvent(scrollWheelEvent2Source: source, units: sc.precise ? .pixel : .line, wheelCount: 2,
                                wheel1: dyI, wheel2: dxI, wheel3: 0) else { return }
         ev.location = displayPoint(nx: e.x, ny: e.y)
+        lastPoint = ev.location
         ev.flags = CGEventFlags(rawValue: UInt64(e.flags))
         if sc.precise {
             // Exact (fractional) pixel deltas: slow Magic Mouse movements are often < 0.5 px
@@ -146,6 +149,58 @@ public final class InputInjector {
 
     /// Test-only (RM_NO_SCROLL_PHASES=1): drop phases, to prove the swipe test detects it.
     static let phasesDisabled = ProcessInfo.processInfo.environment["RM_NO_SCROLL_PHASES"] != nil
+
+    /// Re-posts a companion gesture event from the iMac at the current pointer position,
+    /// so the following scroll events are treated like a real Magic Mouse gesture.
+    public private(set) var gesturesInjected = 0
+    public func injectGesture(_ g: GestureEvent) {
+        lock.lock(); defer { lock.unlock() }
+        guard enabled, !Self.gesturesDisabled, let ev = CGEvent(source: nil) else { return }
+        // The event type (field 55) first: setting it later resets type-specific fields.
+        for f in g.fields.sorted(by: { a, _ in a.index == 55 }) {
+            guard let field = CGEventField(rawValue: UInt32(f.index)) else { continue }
+            if f.isDouble { ev.setDoubleValueField(field, value: f.doubleValue) } else { ev.setIntegerValueField(field, value: f.intValue) }
+        }
+        ev.location = lastPoint == .zero ? (CGEvent(source: nil)?.location ?? .zero) : lastPoint
+        ev.post(tap: .cghidEventTap)
+        gesturesInjected += 1
+    }
+
+    /// Test-only (RM_NO_GESTURES=1): drop companion gestures, to prove the test detects it.
+    static let gesturesDisabled = ProcessInfo.processInfo.environment["RM_NO_GESTURES"] != nil
+
+    /// Gestures from the iMac as shortcuts on this Mac. Back/Forward are resolved for the
+    /// current keyboard layout (localized Cmd-[ / Cmd-]); Spaces and Mission Control use the
+    /// default Mission Control shortcuts (Ctrl-arrows), which are layout-independent.
+    public private(set) var lastAction: String?
+
+    private func performAction(_ a: InputAction) {
+        var key: ShortcutResolver.Key?
+        switch a {
+        case .back, .forward:
+            let ch = a == .back ? "[" : "]"
+            if Thread.isMainThread { key = ShortcutResolver.key(forCommandCharacter: ch) }
+            else { DispatchQueue.main.sync { key = ShortcutResolver.key(forCommandCharacter: ch) } }
+            if key == nil { key = .init(code: a == .back ? 33 : 30, flags: .maskCommand) }   // US fallback
+        case .nextSpace:
+            key = SymbolicHotkeys.key(id: SymbolicHotkeys.moveRightSpace,
+                                      fallback: .init(code: 124, flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]))
+        case .previousSpace:
+            key = SymbolicHotkeys.key(id: SymbolicHotkeys.moveLeftSpace,
+                                      fallback: .init(code: 123, flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]))
+        case .missionControl:
+            key = SymbolicHotkeys.key(id: SymbolicHotkeys.missionControl,
+                                      fallback: .init(code: 126, flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]))
+        }
+        guard let k = key else { return }
+        for down in [true, false] {
+            let ev = CGEvent(keyboardEventSource: source, virtualKey: k.code, keyDown: down)
+            ev?.flags = k.flags
+            ev?.post(tap: .cghidEventTap)
+        }
+        lastAction = "\(a) -> keycode \(k.code) flags \(k.flags.rawValue)"
+        log?("{\"event\":\"action\",\"action\":\"\(a)\",\"keycode\":\(k.code),\"flags\":\(k.flags.rawValue)}")
+    }
 
     /// Releases held keys/buttons but keeps injecting (client dropped, may reconnect).
     public func releaseAll() {

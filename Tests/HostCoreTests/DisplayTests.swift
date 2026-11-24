@@ -77,3 +77,16 @@ import Testing
         #expect(InputInjector.carry(12, &r) == 12 && r == 0)
     }
 }
+
+@Suite struct SymbolicHotkeyTests {
+    @Test func ctrlArrowGetsFnAndNumpad() {
+        let k = SymbolicHotkeys.key(enabled: true, keycode: 124, modifiers: 0x40000)
+        #expect(k?.code == 124)
+        #expect(k?.flags.contains([.maskControl, .maskSecondaryFn, .maskNumericPad]) == true)
+    }
+    @Test func f9MissionControlGetsFn() {
+        let k = SymbolicHotkeys.key(enabled: true, keycode: 101, modifiers: 0)
+        #expect(k?.code == 101 && k?.flags == .maskSecondaryFn)
+    }
+    @Test func disabledIsNil() { #expect(SymbolicHotkeys.key(enabled: false, keycode: 124, modifiers: 0x40000) == nil) }
+}

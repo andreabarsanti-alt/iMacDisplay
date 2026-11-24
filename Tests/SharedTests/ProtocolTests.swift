@@ -144,3 +144,12 @@ private func bytes(_ hex: String) -> Data {
         #expect(ScrollCode(code: 1).precise && ScrollCode(code: 1).phase == 0)
     }
 }
+
+@Suite struct GestureRuleTests {
+    @Test func recordedSwipes() {
+        #expect(GestureRules.dockAction(progress: 0.5117, velocity: 6.6) == .nextSpace)
+        #expect(GestureRules.dockAction(progress: -0.4708, velocity: -6.27) == .previousSpace)
+    }
+    @Test func smallSlowSwipeIsIgnored() { #expect(GestureRules.dockAction(progress: 0.1, velocity: 0.3) == nil) }
+    @Test func shortFlickUsesVelocity() { #expect(GestureRules.dockAction(progress: 0.12, velocity: -2) == .previousSpace) }
+}

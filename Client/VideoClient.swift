@@ -113,6 +113,7 @@ final class VideoClient {
     func requestKeyframe() { conn?.send(.keyframeRequest) }
     func sendLatencyEcho(_ v: UInt32) { conn?.send(.latencyEcho(marker: v)) }
     func send(_ e: InputEvent) { if handshakeDone { conn?.send(.input(e)) } }
+    func send(_ m: Message) { if handshakeDone { conn?.send(m) } }
 
     func disconnect(_ reason: ByeReason, then: (() -> Void)? = nil) {
         guard let c = conn else { then?(); return }

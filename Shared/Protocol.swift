@@ -29,6 +29,7 @@ public enum MessageType: UInt8, CaseIterable {
     case cursor = 21
     case clipboard = 22
     case cursorShape = 23
+    case gesture = 24
     case latencyEcho = 40
 }
 
@@ -53,6 +54,18 @@ public enum InputKind: UInt8 {
     case keyDown = 5
     case keyUp = 6
     case flagsChanged = 7
+    /// A gesture translated into a MacBook action; `code` = InputAction raw value.
+    case action = 8
+}
+
+/// Magic Mouse gestures recognised on the iMac, performed on the MacBook as the
+/// matching shortcut (resolved there for its keyboard layout).
+public enum InputAction: UInt16, CaseIterable {
+    case back = 1             // one-finger swipe right  -> Cmd-[ (localized)
+    case forward = 2          // one-finger swipe left   -> Cmd-] (localized)
+    case nextSpace = 3        // two-finger swipe left   -> Ctrl-Right
+    case previousSpace = 4    // two-finger swipe right  -> Ctrl-Left
+    case missionControl = 5   // two-finger double tap   -> Ctrl-Up
 }
 
 /// One input event: `kind (1) | flags (4) | code (2) | x, y (2×f32) | dx, dy (2×f32)`.
@@ -74,12 +87,37 @@ public struct InputEvent: Equatable {
     }
 }
 
+/// Raw fields of a companion gesture event: (field index, integer or double, value bits).
+public struct GestureEvent: Equatable {
+    public struct Field: Equatable {
+        public var index: UInt8, isDouble: Bool, bits: UInt64
+        public init(index: UInt8, isDouble: Bool, bits: UInt64) { self.index = index; self.isDouble = isDouble; self.bits = bits }
+        public static func int(_ i: UInt8, _ v: Int64) -> Field { .init(index: i, isDouble: false, bits: UInt64(bitPattern: v)) }
+        public static func double(_ i: UInt8, _ v: Double) -> Field { .init(index: i, isDouble: true, bits: v.bitPattern) }
+        public var intValue: Int64 { Int64(bitPattern: bits) }
+        public var doubleValue: Double { Double(bitPattern: bits) }
+    }
+    public var fields: [Field]
+    public init(fields: [Field]) { self.fields = fields }
+}
+
 public struct CursorShape: Equatable {
     public var width: Float32, height: Float32   // fraction of host display width (both)
     public var hotX: Float32, hotY: Float32      // fraction of the cursor image, origin top-left
     public var png: Data
     public init(width: Float32, height: Float32, hotX: Float32, hotY: Float32, png: Data) {
         self.width = width; self.height = height; self.hotX = hotX; self.hotY = hotY; self.png = png
+    }
+}
+
+public enum GestureRules {
+    /// A finished two-finger (dock) swipe -> action, or nil if it was too small.
+    /// Positive progress = fingers moving left = next desktop (to the right); recorded
+    /// from a real Magic Mouse: progress 0.51 / velocity 6.6 vs -0.47 / -6.3.
+    public static func dockAction(progress: Double, velocity: Double) -> InputAction? {
+        guard abs(progress) >= 0.2 || abs(velocity) >= 1.0 else { return nil }
+        let dir = abs(progress) >= 0.2 ? progress : velocity
+        return dir > 0 ? .nextSpace : .previousSpace
     }
 }
 
@@ -138,6 +176,10 @@ public enum Message: Equatable {
     /// Host cursor image. Sizes are normalized to the host display width so the client
     /// can scale with the video; hotspot is normalized to the cursor image (0...1).
     case cursorShape(CursorShape)
+    /// Client -> host: an undocumented companion gesture event (CGEvent type 29) that
+    /// accompanies real Magic Mouse/trackpad scrolls; re-posted on the MacBook so swipes
+    /// there are recognised natively (e.g. Safari back/forward).
+    case gesture(GestureEvent)
     /// Client -> host: marker value read from a decoded frame (M4 latency harness).
     case latencyEcho(marker: UInt32)
 
@@ -153,6 +195,7 @@ public enum Message: Equatable {
         case .cursor: return .cursor
         case .clipboard: return .clipboard
         case .cursorShape: return .cursorShape
+        case .gesture: return .gesture
         case .latencyEcho: return .latencyEcho
         }
     }
@@ -186,6 +229,9 @@ public enum Message: Equatable {
             w.u32(marker)
         case let .cursorShape(c):
             w.f32(c.width); w.f32(c.height); w.f32(c.hotX); w.f32(c.hotY); w.bytes(c.png)
+        case let .gesture(g):
+            w.u8(UInt8(min(g.fields.count, 255)))
+            for f in g.fields.prefix(255) { w.u8(f.index); w.u8(f.isDouble ? 1 : 0); w.u64(f.bits) }
         }
         return w.data
     }
@@ -228,6 +274,15 @@ public enum Message: Equatable {
             msg = .clipboard(s)
         case .latencyEcho:
             msg = .latencyEcho(marker: try r.u32())
+        case .gesture:
+            let n = Int(try r.u8())
+            var fields: [GestureEvent.Field] = []
+            for _ in 0..<n {
+                let i = try r.u8(), kind = try r.u8(), bits = try r.u64()
+                guard kind <= 1 else { throw WireError.invalidValue("gesture field kind") }
+                fields.append(.init(index: i, isDouble: kind == 1, bits: bits))
+            }
+            msg = .gesture(GestureEvent(fields: fields))
         case .cursorShape:
             msg = .cursorShape(CursorShape(width: try r.f32(), height: try r.f32(), hotX: try r.f32(), hotY: try r.f32(),
                                            png: r.rest()))

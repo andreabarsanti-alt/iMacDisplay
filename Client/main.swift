@@ -87,7 +87,8 @@ let hevc = flag("--hevc")
 let status = StatusItem(title: "iMac ← MacBook")
 status.onChange = { st in print("{\"event\":\"status\",\"state\":\"\(st.rawValue)\"}") }
 let tap = ShortcutTap()
-tap.isActive = { NSApp.isActive && display.window.isKeyWindow }
+// --assume-active (tests only): unattended runs can't make the app frontmost.
+tap.isActive = flag("--assume-active") ? { display.window.isVisible } : { NSApp.isActive && display.window.isKeyWindow }
 
 // Per-session objects (recreated for every session in waiting mode).
 var client = VideoClient(key: key, host: hostAddress)
@@ -155,7 +156,7 @@ func finish(code: Int32, reason: String) -> Never {
         print(String(format: "FAIL: average display fps %.1f < %.0f", s.displayFps, minFps)); code = 1
     }
     tap.stop()
-    print("{\"event\":\"shortcuts\",\"forwarded\":\(tap.forwarded)}")
+    print("{\"event\":\"shortcuts\",\"forwarded\":\(tap.forwarded),\"gestures_sent\":\(gesturesSent)}")
     print("{\"event\":\"cursor\",\"updates\":\(display.cursorUpdates),\"shape\":\(display.cursorLayer.contents != nil)}")
     if markerSpec != nil { print("{\"event\":\"marker_misses\",\"count\":\(markerMisses)}") }
     print("{\"event\":\"exit\",\"reason\":\"\(reason)\",\"hardware_decode\":\(decoder.usingHardware)}")
@@ -240,6 +241,15 @@ func startSession() {
 
 display.inputView.onEvent = { e in inputClient?.send(e) }
 tap.onEvent = { e in inputClient?.send(e) }
+let sendAction: (InputAction) -> Void = { a in inputClient?.send(InputEvent(kind: .action, code: a.rawValue)) }
+display.inputView.onAction = sendAction
+tap.onAction = sendAction
+var gesturesSent = 0
+tap.onGesture = { g in gesturesSent += 1; inputClient?.send(.gesture(g)) }
+status.addToggle("Swipe = Back/Forward shortcut (fallback)", isOn: InputView.pageSwipes) { on in
+    InputView.pageSwipes = on
+    UserDefaults.standard.set(on, forKey: "pageSwipes")
+}
 
 // Escape hatch: Ctrl-Option-Cmd-Q always ends the session from the iMac side
 // (test runs exit; waiting mode returns to the idle window).
@@ -379,6 +389,27 @@ func runTestDrag(_ spec: String) {
 }
 
 func runTestScripts() {
+    if let a = str("--test-action"), let act = InputAction.allCases.first(where: { "\($0)" == a }) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sendAction(act); print("{\"event\":\"test_action_sent\",\"action\":\"\(a)\"}") }
+    }
+    if let spec = str("--test-swipe-replay") {
+        // "<recording path>:<gesture index>"
+        let parts = spec.split(separator: ":").map(String.init)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            DispatchQueue.global().async {
+                let n = ShortcutTap.replayScrollGesture(from: parts[0], index: Int(parts.count > 1 ? parts[1] : "3") ?? 3)
+                DispatchQueue.main.async { print("{\"event\":\"swipe_replayed\",\"scrolls\":\(n)}") }
+            }
+        }
+    }
+    if let path = str("--test-dock-replay") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.global().async {
+                let n = ShortcutTap.replayDockSwipe(from: path)
+                DispatchQueue.main.async { print("{\"event\":\"dock_replayed\",\"events\":\(n)}") }
+            }
+        }
+    }
     if flag("--test-click") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { DispatchQueue.global().async { ShortcutTap.postTestClick() } }
     }

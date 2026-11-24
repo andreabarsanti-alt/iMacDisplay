@@ -37,7 +37,7 @@ final class GestureRecorder {
             line += String(format: ",\"fx\":%.3f,\"fy\":%.3f,\"px\":%lld,\"py\":%lld",
                            d(.scrollWheelEventFixedPtDeltaAxis2), d(.scrollWheelEventFixedPtDeltaAxis1),
                            i(.scrollWheelEventPointDeltaAxis2), i(.scrollWheelEventPointDeltaAxis1))
-        } else if raw >= 29 && raw <= 31 || raw > 31 {
+        } else if ![1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 25, 26, 27].contains(raw) {
             var fields: [String] = []
             for f in 0...255 {
                 guard let field = CGEventField(rawValue: UInt32(f)) else { continue }

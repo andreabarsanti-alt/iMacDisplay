@@ -28,6 +28,7 @@ import Shared
 //     --display auto|builtin|external   which display to share (default auto)
 //     --no-fit        don't switch an external display to 16:9 for the iMac
 //     --max-width <px> cap the captured width (e.g. 3840 for 4K)
+//     --self-action <a,b>  perform gesture actions (back, forward, nextSpace, previousSpace, missionControl)
 //     --test-resize-after <s>  switch capture size mid-session (M13 test)
 //     --log-input     print every input event received (JSON)
 //     --allow-reconnect  keep listening when the client drops (escape hatch still stops)
@@ -236,7 +237,7 @@ if flag("--serve") {
             if l.count < minSamples { print("FAIL: only \(l.count) latency samples (< \(minSamples))"); code = 1 }
             else { print("PASS") }
         }
-        print("{\"event\":\"input\",\"injected\":\(session.injector.injectedCount),\"trusted\":\(session.injector.isTrusted)}")
+        print("{\"event\":\"input\",\"injected\":\(session.injector.injectedCount),\"gestures\":\(session.injector.gesturesInjected),\"trusted\":\(session.injector.isTrusted)}")
         if let inputTest {
             let got = inputTest.text
             let esc = got.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -318,6 +319,17 @@ if flag("--serve") {
         }
     }
     if printStats { startStatsTimer(session.stats) }
+    if let i = args.firstIndex(of: "--self-action"), i + 1 < args.count {
+        // Test: perform gesture actions through the session's injector (e.g. "back,forward").
+        let names = args[i + 1].split(separator: ",").map(String.init)
+        for (n, name) in names.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5 + Double(n) * 0.8) {
+                if let a = InputAction.allCases.first(where: { "\($0)" == name }) {
+                    session.injector.inject(InputEvent(kind: .action, code: a.rawValue))
+                }
+            }
+        }
+    }
     if let i = args.firstIndex(of: "--test-resize-after"), i + 1 < args.count, let d = Double(args[i + 1]) {
         DispatchQueue.main.asyncAfter(deadline: .now() + d) { Task { @MainActor in await session.debugToggleCaptureSize() } }
     }

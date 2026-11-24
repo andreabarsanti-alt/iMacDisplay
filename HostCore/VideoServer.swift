@@ -33,6 +33,7 @@ public final class VideoServer {
     public var onLatencyEcho: ((UInt32) -> Void)?
 
     public var onInput: ((InputEvent) -> Void)?
+    public var onGesture: ((GestureEvent) -> Void)?
 
     public init(config: Config) {
         self.config = config
@@ -162,6 +163,7 @@ public final class VideoServer {
             case .keyframeRequest: self.onKeyframeRequest?()
             case let .latencyEcho(v): self.onLatencyEcho?(v)
             case let .input(e): self.onInput?(e)
+            case let .gesture(g): self.onGesture?(g)
             case let .bye(r):
                 self.onByeFromClient?(r)
                 c.close("client said bye: \(r)")

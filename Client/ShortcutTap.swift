@@ -15,14 +15,36 @@ final class ShortcutTap {
     var onEscape: (() -> Void)?
     /// Ctrl-Option-Cmd-Z: hide/show the mirror without disconnecting. Seen even while hidden.
     var onPauseToggle: (() -> Void)?
+    /// Gesture -> MacBook action (two-finger swipe -> next/previous desktop).
+    var onAction: ((InputAction) -> Void)?
     private(set) var forwarded = 0
+    private var dockProgress: Double = 0, dockVelocity: Double = 0
+    static let debug = CommandLine.arguments.contains("--log-scroll")
+    var forwardGestures = true
+    var onGesture: ((GestureEvent) -> Void)?
+
+    /// Ids, process and window numbers and timestamps are machine-specific: not copied.
+    static let skipFields: Set<Int> = [39, 40, 41, 43, 44, 45, 50, 53, 58, 85, 87, 169]
+
+    static func capture(_ e: CGEvent) -> GestureEvent {
+        var fields: [GestureEvent.Field] = []
+        for i in 0...255 where !skipFields.contains(i) {
+            guard let f = CGEventField(rawValue: UInt32(i)) else { continue }
+            let iv = e.getIntegerValueField(f), dv = e.getDoubleValueField(f)
+            if iv == 0 && dv == 0 { continue }
+            fields.append(Double(iv) == dv ? .int(UInt8(i), iv) : .double(UInt8(i), dv))
+        }
+        return GestureEvent(fields: fields)
+    }
 
     var isRunning: Bool { tap != nil }
 
     /// Returns false if the tap couldn't be created (Accessibility not granted).
     @discardableResult
     func start() -> Bool {
+        // 30 = Dock control (undocumented): two-finger swipes between desktops.
         let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << 30) | (1 << 29)   // 29 = gesture companions of Magic Mouse scrolls
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let t = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
                                         eventsOfInterest: CGEventMask(mask),
@@ -49,6 +71,13 @@ final class ShortcutTap {
             if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }
             return Unmanaged.passUnretained(event)
         }
+        if type.rawValue == 30 { return handleDock(event) }
+        if type.rawValue == 29 {
+            // Companion gesture events: left untouched here, copied to the MacBook so its
+            // apps recognise swipes natively (Safari back/forward with its animation).
+            if forwardGestures && isActive() { onGesture?(Self.capture(event)) }
+            return Unmanaged.passUnretained(event)
+        }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
         let escape: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
@@ -66,6 +95,28 @@ final class ShortcutTap {
         onEvent?(InputEvent(kind: kind, flags: UInt32(truncatingIfNeeded: flags.rawValue), code: code))
         forwarded += 1
         return nil   // swallowed: the iMac never sees it
+    }
+
+    /// Dock control events while the mirror is in front: swallowed, so the iMac doesn't
+    /// switch its own desktops; a completed two-finger swipe becomes a MacBook action.
+    /// Fields (recorded from a Magic Mouse): 110 = 23 dock swipe, 132 = phase
+    /// (1 began, 2 changed, 4 ended, 8 cancelled), 124 = progress, 129 = end velocity.
+    private func handleDock(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+        func f(_ i: UInt32) -> CGEventField { CGEventField(rawValue: i)! }
+        if Self.debug {
+            print("{\"event\":\"dock_event\",\"active\":\(isActive()),\"t110\":\(event.getIntegerValueField(f(110))),\"phase\":\(event.getIntegerValueField(f(132))),\"progress\":\(event.getDoubleValueField(f(124)))}")
+        }
+        guard isActive() else { return Unmanaged.passUnretained(event) }
+        guard event.getIntegerValueField(f(110)) == 23 else { return nil }   // other dock gestures: swallow
+        let phase = event.getIntegerValueField(f(132))
+        if phase == 1 { dockProgress = 0; dockVelocity = 0 }
+        dockProgress = event.getDoubleValueField(f(124))
+        let v = event.getDoubleValueField(f(129)); if v != 0 { dockVelocity = v }
+        if phase == 4, let a = GestureRules.dockAction(progress: dockProgress, velocity: dockVelocity) {
+            print("{\"event\":\"dock_swipe\",\"action\":\"\(a)\",\"progress\":\(dockProgress)}")
+            onAction?(a)
+        }
+        return nil
     }
 
     /// Self-test: posts Cmd-Tab and Cmd-Space as if typed on the iMac keyboard.
@@ -159,6 +210,70 @@ final class ShortcutTap {
             }
             usleep(20_000)
         }
+    }
+
+    /// Self-test: replays a recorded one-finger scroll gesture (scrolls + companion gesture
+    /// events, from --record-gestures output) over the mirror at `testPoint`.
+    static func replayScrollGesture(from path: String, index: Int) -> Int {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return 0 }
+        let recs = text.split(separator: "\n").compactMap { l -> [String: Any]? in
+            guard l.hasPrefix("{\"event\":\"rec\"") else { return nil }
+            return try? JSONSerialization.jsonObject(with: Data(l.utf8)) as? [String: Any]
+        }
+        var n = 0, start = -1, end = recs.count
+        for (i, r) in recs.enumerated() where (r["type"] as? Double) == 22 && (r["phase"] as? Double) == 1 {
+            n += 1
+            if n == index { start = i } else if n == index + 1 { end = i; break }
+        }
+        guard start >= 0 else { return 0 }
+        var s = start; while s > 0 && (recs[s - 1]["type"] as? Double) == 29 { s -= 1 }
+        let p = testPoint, src = CGEventSource(stateID: .hidSystemState)
+        CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(150_000)
+        var posted = 0
+        for r in recs[s..<end] {
+            if (r["type"] as? Double) == 29, let f = r["fields"] as? [String: [Double]], let e = CGEvent(source: nil) {
+                for (k, v) in f.sorted(by: { a, _ in a.key == "55" }) {
+                    guard let i = Int(k), !skipFields.contains(i), let field = CGEventField(rawValue: UInt32(i)) else { continue }
+                    if v[0] == v[1] { e.setIntegerValueField(field, value: Int64(v[0])) } else { e.setDoubleValueField(field, value: v[1]) }
+                }
+                e.location = p; e.post(tap: .cghidEventTap)
+            } else if (r["type"] as? Double) == 22 {
+                let px = Int32(r["px"] as? Double ?? 0), py = Int32(r["py"] as? Double ?? 0)
+                guard let e = CGEvent(scrollWheelEvent2Source: src, units: .pixel, wheelCount: 2, wheel1: py, wheel2: px, wheel3: 0) else { continue }
+                e.location = p
+                e.setIntegerValueField(.scrollWheelEventIsContinuous, value: Int64(r["continuous"] as? Double ?? 1))
+                e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: r["fx"] as? Double ?? 0)
+                e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: r["fy"] as? Double ?? 0)
+                e.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(px))
+                e.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: Int64(py))
+                e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(r["phase"] as? Double ?? 0))
+                e.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(r["momentum"] as? Double ?? 0))
+                e.post(tap: .cghidEventTap); posted += 1
+                usleep(8_000)
+            }
+        }
+        return posted
+    }
+
+    /// Self-test: replays the first recorded dock swipe (from --record-gestures output) here.
+    static func replayDockSwipe(from path: String) -> Int {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return 0 }
+        let skip: Set<Int> = [39, 40, 45, 50, 58, 85, 87, 169]
+        var n = 0, started = false
+        for line in text.split(separator: "\n") where line.contains("\"type\":30") {
+            guard let d = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let f = d["fields"] as? [String: [Double]], let e = CGEvent(source: nil) else { continue }
+            if f["132"]?[0] == 1 { if started { break }; started = true }
+            // The event type (field 55) first: setting it later resets type-specific fields.
+            for (k, v) in f.sorted(by: { a, _ in a.key == "55" }) {
+                guard let i = Int(k), !skip.contains(i), let field = CGEventField(rawValue: UInt32(i)) else { continue }
+                if v[0] == v[1] { e.setIntegerValueField(field, value: Int64(v[0])) } else { e.setDoubleValueField(field, value: v[1]) }
+            }
+            e.post(tap: .cghidEventTap); n += 1
+            usleep(16_000)
+        }
+        return n
     }
 
     /// Self-test: posts the pause combination.
