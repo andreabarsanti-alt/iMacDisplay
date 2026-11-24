@@ -10,6 +10,8 @@ final class InputView: NSView {
     var onPauseToggle: (() -> Void)?
     /// Local pointer moved (normalized video coords): drives the zero-lag cursor overlay.
     var onLocalMove: ((Float32, Float32) -> Void)?
+    /// Diagnostic (--log-scroll): print every scroll event the iMac delivers to the mirror.
+    static let logScroll = CommandLine.arguments.contains("--log-scroll")
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -104,8 +106,18 @@ final class InputView: NSView {
 
     /// Scroll: dx/dy carry the deltas; code 1 = precise (pixel) deltas, 0 = line deltas.
     override func scrollWheel(with e: NSEvent) {
+        if Self.logScroll {
+            print(String(format: "{\"event\":\"client_scroll\",\"phase\":%lu,\"momentum\":%lu,\"dx\":%.2f,\"dy\":%.2f,\"precise\":%@}",
+                         e.phase.rawValue, e.momentumPhase.rawValue, e.scrollingDeltaX, e.scrollingDeltaY, e.hasPreciseScrollingDeltas ? "true" : "false"))
+        }
         let (x, y) = normalize(convert(e.locationInWindow, from: nil))
-        onEvent?(InputEvent(kind: .scroll, flags: flags(e), code: e.hasPreciseScrollingDeltas ? 1 : 0,
+        // Keep the gesture phase and momentum phase (Magic Mouse / trackpad): apps on the
+        // MacBook use them for swipes, rubber-banding and inertia.
+        let cg = e.cgEvent
+        let sc = ScrollCode(precise: e.hasPreciseScrollingDeltas,
+                            phase: UInt8(truncatingIfNeeded: cg?.getIntegerValueField(.scrollWheelEventScrollPhase) ?? 0),
+                            momentum: UInt8(truncatingIfNeeded: cg?.getIntegerValueField(.scrollWheelEventMomentumPhase) ?? 0))
+        onEvent?(InputEvent(kind: .scroll, flags: flags(e), code: sc.code,
                             x: x, y: y, dx: Float32(e.scrollingDeltaX), dy: Float32(e.scrollingDeltaY)))
     }
 

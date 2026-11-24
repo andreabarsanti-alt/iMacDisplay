@@ -130,3 +130,17 @@ private func bytes(_ hex: String) -> Data {
         #expect(Marker.decode { _ in 0 } == nil)
     }
 }
+
+@Suite struct ScrollCodeTests {
+    @Test(arguments: [(true, UInt8(1), UInt8(0)), (true, 2, 0), (true, 4, 0), (true, 8, 0), (true, 128, 0),
+                      (true, 0, 1), (true, 0, 2), (true, 0, 3), (false, 0, 0), (true, 0, 0)])
+    func roundTrip(_ c: (Bool, UInt8, UInt8)) {
+        let s = ScrollCode(precise: c.0, phase: c.1, momentum: c.2)
+        #expect(ScrollCode(code: s.code) == s)
+    }
+    @Test func compatibleWithOldPeers() {
+        #expect(ScrollCode(precise: true).code == 1)     // old "precise" value
+        #expect(ScrollCode(precise: false).code == 0)    // old "line" value
+        #expect(ScrollCode(code: 1).precise && ScrollCode(code: 1).phase == 0)
+    }
+}

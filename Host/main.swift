@@ -2,7 +2,7 @@ import AppKit
 import CoreMedia
 import Foundation
 import Shared
-import HostCore
+@preconcurrency import HostCore
 
 // RemoteMirrorHost: runs on the MacBook (arm64).
 //
@@ -34,6 +34,7 @@ import HostCore
 //     --dead-man <s>  stop injecting input after N seconds (tests)
 //     --input-test    show a focused text field; print its content on exit
 //     --expect-text <s>  with --input-test: PASS only if the field equals this
+//     --swipe-test    show a swipe/scroll test window; report phases and recognised page swipes
 //     --mouse-test    show click targets; check the client's scripted clicks/scroll on exit
 //     --mouse-spec-out <path>  write target positions for the client
 //     --marker-spec-out <path>  write the marker position for the client
@@ -210,6 +211,7 @@ if flag("--serve") {
     let marker = flag("--latency") ? LatencyMarkerWindow() : nil
     let inputTest = flag("--input-test") ? InputTestWindow() : nil
     let mouseTest = flag("--mouse-test") ? MouseTestWindow() : nil
+    let swipeTest = flag("--swipe-test") ? ScrollTestWindow() : nil
     let latency = LatencyStats()
     let status = StatusItem(title: "MacBook → iMac")
     session.onLatencyEcho = { v in
@@ -243,6 +245,11 @@ if flag("--serve") {
                 if got == args[i + 1] { print("PASS") } else { print("FAIL: field is \"\(got)\", expected \"\(args[i + 1])\""); code = 1 }
             }
             inputTest.close()
+        }
+        if let swipeTest {
+            print(swipeTest.summaryJSON())
+            if flag("--dump-scroll") { swipeTest.view.events.forEach { print("{\"event\":\"scroll\",\"e\":\($0)}") } }
+            swipeTest.close()
         }
         if let mouseTest {
             let r = mouseTest.evaluate()
@@ -284,6 +291,25 @@ if flag("--serve") {
             }
         }
         inputTest?.show()
+        if let swipeTest {
+            swipeTest.show()
+            if let i = args.firstIndex(of: "--self-scroll"), i + 1 < args.count, let dx = Float32(args[i + 1]) {
+                // Inject precise scrolls straight through the session's injector onto the test
+                // window: proves fractional deltas and phases survive injection on the MacBook.
+                let c = swipeTest.spec.split(separator: ",").compactMap { Float32($0) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    for (i, ph) in ([UInt8(1)] + Array(repeating: 2, count: 10) + [4]).enumerated() {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.03) {
+                            session.injector.inject(InputEvent(kind: .scroll, code: ScrollCode(precise: true, phase: ph).code,
+                                                               x: c[0], y: c[1], dx: dx, dy: 0))
+                        }
+                    }
+                }
+            }
+            if let i = args.firstIndex(of: "--swipe-spec-out"), i + 1 < args.count {
+                try? swipeTest.spec.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+            }
+        }
         if let mouseTest {
             mouseTest.show()
             if let i = args.firstIndex(of: "--mouse-spec-out"), i + 1 < args.count {

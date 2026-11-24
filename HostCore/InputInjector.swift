@@ -106,14 +106,46 @@ public final class InputInjector {
         ev.post(tap: .cghidEventTap)
     }
 
+    /// Sub-pixel remainders carried between precise scroll events (AppKit reads whole
+    /// pixels from injected events; slow Magic Mouse scrolls are often < 0.5 px per event).
+    private var scrollRemainder = (x: Float32(0), y: Float32(0))
+
+    /// Whole pixels to send now, keeping the fraction for the next event, so the total
+    /// distance is exact. Pure, unit-tested.
+    public static func carry(_ value: Float32, _ remainder: inout Float32) -> Int32 {
+        let total = value + remainder
+        let whole = total.rounded(.towardZero)
+        remainder = total - whole
+        return Int32(whole)
+    }
+
     private func injectScroll(_ e: InputEvent) {
-        let precise = e.code == 1
-        guard let ev = CGEvent(scrollWheelEvent2Source: source, units: precise ? .pixel : .line, wheelCount: 2,
-                               wheel1: Int32(e.dy.rounded()), wheel2: Int32(e.dx.rounded()), wheel3: 0) else { return }
+        let sc = ScrollCode(code: e.code)
+        if sc.phase == 1 || sc.momentum == 1 { scrollRemainder = (0, 0) }     // new gesture or new momentum run
+        let dyI = sc.precise ? Self.carry(e.dy, &scrollRemainder.y) : Int32(e.dy.rounded())
+        let dxI = sc.precise ? Self.carry(e.dx, &scrollRemainder.x) : Int32(e.dx.rounded())
+        guard let ev = CGEvent(scrollWheelEvent2Source: source, units: sc.precise ? .pixel : .line, wheelCount: 2,
+                               wheel1: dyI, wheel2: dxI, wheel3: 0) else { return }
         ev.location = displayPoint(nx: e.x, ny: e.y)
         ev.flags = CGEventFlags(rawValue: UInt64(e.flags))
+        if sc.precise {
+            // Exact (fractional) pixel deltas: slow Magic Mouse movements are often < 0.5 px
+            // per event and were lost by rounding.
+            ev.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+            ev.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(e.dy))
+            ev.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: Double(e.dx))
+            ev.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: Int64(dyI))
+            ev.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(dxI))
+        }
+        if !Self.phasesDisabled {
+            ev.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(sc.phase))
+            ev.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(sc.momentum))
+        }
         ev.post(tap: .cghidEventTap)
     }
+
+    /// Test-only (RM_NO_SCROLL_PHASES=1): drop phases, to prove the swipe test detects it.
+    static let phasesDisabled = ProcessInfo.processInfo.environment["RM_NO_SCROLL_PHASES"] != nil
 
     /// Releases held keys/buttons but keeps injecting (client dropped, may reconnect).
     public func releaseAll() {

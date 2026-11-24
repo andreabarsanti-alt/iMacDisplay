@@ -58,3 +58,22 @@ import Testing
     @Test func fiveKDefaultsTo30() { #expect(Displays.defaultFps(pixelWidth: 5120, pixelHeight: 2880) == 30) }
     @Test func fiveKCanBe60() { #expect(Displays.defaultFps(pixelWidth: 5120, pixelHeight: 2880, fpsAbove4K: 60) == 60) }
 }
+
+@Suite struct ScrollCarryTests {
+    @Test func tenTimesPointFourIsFour() {
+        var r: Float32 = 0
+        let sent = (0..<10).map { _ in InputInjector.carry(0.4, &r) }
+        #expect(sent.reduce(0, +) == 4)
+        #expect(abs(r) < 0.0001)
+    }
+    @Test func negativeAndMixed() {
+        var r: Float32 = 0
+        let sent = [-0.6, -0.6, 1.5, 0.2].map { InputInjector.carry(Float32($0), &r) }
+        #expect(sent.reduce(0, +) == 0)          // total -0.6-0.6+1.5+0.2 = 0.5 -> 0 sent, 0.5 kept
+        #expect(abs(r - 0.5) < 0.0001)
+    }
+    @Test func wholeValuesUnchanged() {
+        var r: Float32 = 0
+        #expect(InputInjector.carry(12, &r) == 12 && r == 0)
+    }
+}

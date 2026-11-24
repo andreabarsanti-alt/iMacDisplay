@@ -31,6 +31,11 @@ All pass except link speed:
 
 ## Last test results
 
+- **Magic Mouse swipes (2026-11-24, autonomous):**
+  - Root cause A (fixed, proven): an invisible `loginwindow` window (level 996, 347x313, centre of the iMac screen, present since boot; probably a leftover lock-screen panel) sat above the mirror window (level 25) and swallowed clicks, scrolls and swipes in the middle of the screen (centre 0/1 clicks, 0/5 scrolls; off-centre 1/1, 5/5). Mirror window now at screen-saver level (1000): centre 1/1, 5/5. The real lock screen (shielding level) still covers it.
+  - Root cause B (fixed, proven): scroll gesture phases and momentum phases were not forwarded, so swipes arrived as plain scrolls. Now packed into InputEvent.code (ScrollCode, backward compatible) and set on injected events. `scripts/fb-swipe-test.sh`: began/changed/ended + momentum reach the MacBook; control RM_NO_SCROLL_PHASES=1 fails.
+  - Root cause C (fixed, proven): precise deltas were rounded per event (slow scrolls < 0.5 px lost). The injector carries the fraction forward: 12 x 0.4 px arrive as 4.0 px (was 0). Unit tests.
+  - Open (needs a real Magic Mouse): macOS completes "swipe between pages" only for gesture-backed events; injected scrolls with correct phases start but never complete AppKit/WebKit swipe tracking (tested several variants incl. guessed gesture events). Two-finger swipes (full-screen apps) are consumed by the iMac's Dock. `--record-gestures` recorder is ready for a human recording to design back/forward and Spaces forwarding.
 - **5K tuning (lid closed, dummy at 2560x1440 HiDPI = 5120x2880):** HEVC 60 fps can't keep up (encode ~40 ms; median 80-90 / p95 116-155 ms); 5K 30 fps 58 / 80 ms; 4K-capped 60 fps 51 / 72 ms; 1440p 60 fps 51 / 59 ms. Live comparison by the human: 4K "not sharp enough", 5K 30 fps "looks good" -> default above 4K is 30 fps (menu: 5K frame rate 30/60); built-in stays 60 fps. p95 at 5K grows with bitrate (bigger keyframes on the 100 Mbps link).
 - **M13 with the HDMI dummy (2026-11-23, human):** plugged in mid-session -> dummy set to 2560x1440 HiDPI (5120x2880 px), live switch 1.26 s, iMac shows native 5K, lid closed and the session continues. Pending: 30-min lid-closed run, latency/tuning at 5120x2880.
 - **Feedback 2026-11-23 (items 2, 3, 5):**

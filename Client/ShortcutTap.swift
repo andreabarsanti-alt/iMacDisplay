@@ -91,6 +91,76 @@ final class ShortcutTap {
         let u = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_4), keyDown: false); u?.flags = f; u?.post(tap: .cghidEventTap)
     }
 
+    /// Self-test: a Magic-Mouse-like horizontal swipe (continuous scroll with gesture
+    /// phases, then momentum) at the centre of the iMac's screen, over the mirror.
+    /// Where test scrolls are posted, as a fraction of the iMac screen (RM_SCROLL_AT="0.3,0.3").
+    static var testPoint: CGPoint {
+        let b = CGDisplayBounds(CGMainDisplayID())
+        let f = (ProcessInfo.processInfo.environment["RM_SCROLL_AT"] ?? CommandLine.arguments.firstIndex(of: "--scroll-at")
+            .flatMap { CommandLine.arguments.indices.contains($0 + 1) ? CommandLine.arguments[$0 + 1] : nil } ?? "0.5,0.5")
+            .split(separator: ",").compactMap { Double($0) }
+        return CGPoint(x: b.minX + b.width * (f.first ?? 0.5), y: b.minY + b.height * (f.count > 1 ? f[1] : 0.5))
+    }
+
+    /// Diagnostic: a left click at `testPoint`.
+    static func postTestClick() {
+        let p = testPoint
+        let src = CGEventSource(stateID: .hidSystemState)
+        for t in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+            CGEvent(mouseEventSource: src, mouseType: t, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+            usleep(80_000)
+        }
+    }
+
+    static func postSyntheticSwipe(right: Bool) {
+        let p = testPoint
+        let src = CGEventSource(stateID: .hidSystemState)
+        CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(100_000)
+        let sign: Double = right ? 1 : -1
+        func scroll(_ dx: Double, _ phase: Int64, _ momentum: Int64) {
+            guard let e = CGEvent(scrollWheelEvent2Source: src, units: .pixel, wheelCount: 2, wheel1: 0,
+                                  wheel2: Int32((dx * sign).rounded()), wheel3: 0) else { return }
+            e.location = p
+            e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+            e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: dx * sign)
+            e.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+            e.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+            e.post(tap: .cghidEventTap)
+            usleep(12_000)
+        }
+        scroll(0.4, 1, 0)                                                          // began (sub-pixel!)
+        for d in [6.0, 10, 14, 18, 22, 24, 24, 22, 20, 18] { scroll(d, 2, 0) }     // changed
+        scroll(0, 4, 0)                                                            // ended
+        scroll(16, 0, 1)                                                           // momentum begin
+        for d in [14.0, 11, 8, 6, 4, 2, 1] { scroll(d, 0, 2) }                     // momentum continue
+        scroll(0, 0, 3)                                                            // momentum end
+    }
+
+    /// Diagnostic: three scroll variants over the mirror, tagged by their horizontal size:
+    /// 3 lines (wheel), 7 px continuous without phases, 11 px continuous with phases.
+    static func postScrollVariants() {
+        let p = testPoint
+        let src = CGEventSource(stateID: .hidSystemState)
+        CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(100_000)
+        if let e = CGEvent(scrollWheelEvent2Source: src, units: .line, wheelCount: 2, wheel1: 0, wheel2: 3, wheel3: 0) {
+            e.location = p; e.post(tap: .cghidEventTap)
+        }
+        usleep(300_000)
+        if let e = CGEvent(scrollWheelEvent2Source: src, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: 7, wheel3: 0) {
+            e.location = p; e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1); e.post(tap: .cghidEventTap)
+        }
+        usleep(300_000)
+        for (dx, ph) in [(Int32(11), Int64(1)), (11, 2), (0, 4)] {
+            if let e = CGEvent(scrollWheelEvent2Source: src, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: dx, wheel3: 0) {
+                e.location = p; e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                e.setIntegerValueField(.scrollWheelEventScrollPhase, value: ph); e.post(tap: .cghidEventTap)
+            }
+            usleep(20_000)
+        }
+    }
+
     /// Self-test: posts the pause combination.
     static func postPause() {
         let src = CGEventSource(stateID: .hidSystemState)

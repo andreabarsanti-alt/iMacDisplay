@@ -83,6 +83,29 @@ public struct CursorShape: Equatable {
     }
 }
 
+/// Packs a scroll event's extras into InputEvent.code (16 bits):
+/// bit 0 = precise (pixel) deltas, bits 1-8 = CGScrollPhase raw value
+/// (began 1, changed 2, ended 4, cancelled 8, mayBegin 128), bits 9-10 =
+/// CGMomentumScrollPhase (none 0, begin 1, continue 2, end 3).
+/// Older peers only knew bit 0 (code 0/1), so precise-without-phases stays 1.
+public struct ScrollCode: Equatable {
+    public var precise: Bool
+    public var phase: UInt8
+    public var momentum: UInt8
+
+    public init(precise: Bool, phase: UInt8 = 0, momentum: UInt8 = 0) {
+        self.precise = precise; self.phase = phase; self.momentum = momentum & 0x3
+    }
+
+    public init(code: UInt16) {
+        precise = code & 1 != 0
+        phase = UInt8((code >> 1) & 0xff)
+        momentum = UInt8((code >> 9) & 0x3)
+    }
+
+    public var code: UInt16 { (precise ? 1 : 0) | UInt16(phase) << 1 | UInt16(momentum & 0x3) << 9 }
+}
+
 public struct VideoFrame: Equatable {
     public static let keyframeFlag: UInt8 = 0x01
     public static let hevcFlag: UInt8 = 0x02

@@ -33,7 +33,11 @@ final class DisplayWindow {
         window.backgroundColor = .black
         window.isReleasedWhenClosed = false
         window.acceptsMouseMovedEvents = true
-        if !windowed { window.level = .mainMenu + 1 }
+        // Screen-saver level (1000): above everything an app or the system normally shows,
+        // including a leftover invisible loginwindow panel (level 996, 347x313 in the middle
+        // of the screen) that otherwise swallowed clicks, scrolls and swipes there. The real
+        // lock screen (shielding level) still covers the mirror when the iMac locks.
+        if !windowed { window.level = .screenSaver }
         let view = InputView(frame: NSRect(origin: .zero, size: rect.size))
         inputView = view
         view.wantsLayer = true

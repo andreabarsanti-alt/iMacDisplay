@@ -24,6 +24,8 @@ import Shared
 //   --test-shortcuts        post Cmd-Tab + Cmd-Space on the iMac after connecting (M7 test)
 //   --test-escape <s>       post Ctrl-Option-Cmd-Q after N seconds (M7 test)
 //   --test-screenshot       post Ctrl-Cmd-Shift-4 on the iMac, then drag a selection (feedback item 5)
+//   --record-gestures       log every input event incl. undocumented gesture events (diagnostic)
+//   --test-swipe            post two Magic-Mouse-like phased swipes on the iMac (feedback: swipes)
 //   --test-drag x0,y0,x1,y1 drag through the mouse path 3 s after connecting (normalized coords)
 //   --test-pause            post Ctrl-Option-Cmd-Z twice (pause, resume) after connecting
 //   --mouse-script <spec>   click/scroll host targets "nx,ny;..." (M6 test)
@@ -377,6 +379,24 @@ func runTestDrag(_ spec: String) {
 }
 
 func runTestScripts() {
+    if flag("--test-click") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { DispatchQueue.global().async { ShortcutTap.postTestClick() } }
+    }
+    if flag("--test-scroll-variants") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.global().async { ShortcutTap.postScrollVariants(); DispatchQueue.main.async { print("{\"event\":\"scroll_variants_posted\"}") } }
+        }
+    }
+    if flag("--test-swipe") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.global().async {
+                ShortcutTap.postSyntheticSwipe(right: true)
+                usleep(800_000)
+                ShortcutTap.postSyntheticSwipe(right: false)
+                DispatchQueue.main.async { print("{\"event\":\"test_swipe_posted\"}") }
+            }
+        }
+    }
     if let spec = str("--test-drag") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { runTestDrag(spec) }
     }
@@ -412,6 +432,24 @@ func runTestScripts() {
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(events.count) * 0.015 + 0.2) {
             print("{\"event\":\"typed\",\"events\":\(events.count)}")
         }
+    }
+}
+
+let gestureRecorder = GestureRecorder()
+if flag("--record-gestures") {
+    print("{\"event\":\"recorder\",\"running\":\(gestureRecorder.start())}")
+}
+
+if flag("--log-scroll") {
+    // Diagnostic: does the app get scroll events at all, and which window do they target?
+    NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { e in
+        print(String(format: "{\"event\":\"app_scroll\",\"window\":\"%@\",\"key\":%@,\"dx\":%.2f}",
+                     e.window?.title ?? "nil", (e.window?.isKeyWindow ?? false) ? "true" : "false", e.scrollingDeltaX))
+        return e
+    }
+    NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { e in
+        print(String(format: "{\"event\":\"other_app_scroll\",\"dx\":%.2f,\"frontmost\":\"%@\"}",
+                     e.scrollingDeltaX, NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"))
     }
 }
 
