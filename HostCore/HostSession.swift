@@ -64,6 +64,8 @@ public final class HostSession {
     public var onLatencyEcho: ((UInt32) -> Void)?
     public var onInputEvent: ((InputEvent) -> Void)?
     public var onEscapeHatch: (() -> Void)?
+    /// The iMac runs a RemoteMirror with another protocol version.
+    public var onVersionMismatch: ((UInt16) -> Void)?
 
     private let server: VideoServer
     private let inputServer: VideoServer
@@ -175,6 +177,7 @@ public final class HostSession {
         inputServer.log = log
         injector.log = log
         server.onKeyframeRequest = { [weak self] in self?.encoder?.requestKeyframe() }
+        server.onVersionMismatch = { [weak self] v in DispatchQueue.main.async { self?.onVersionMismatch?(v) } }
         server.onLatencyEcho = { [weak self] v in self?.onLatencyEcho?(v) }
         inputServer.onGesture = { [weak self] g in
             guard let self, !self.config.viewOnly else { return }

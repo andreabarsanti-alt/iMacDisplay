@@ -3,7 +3,7 @@
 Custom Swift app, two targets: **Host** (MacBook) and **Client** (iMac).
 Goal: mirror the MacBook screen on the iMac and control it with the iMac's keyboard and mouse.
 Link: direct Ethernet cable between the two Macs (static IPs, TLS-PSK; see `imac-mbp-agentic-build-plan.md`). Wi-Fi is used only for internet.
-Repo: `github.com/andreabarsanti-alt/iMacDisplay` (private).
+Repo: `github.com/andreabarsanti-alt/iMacDisplay` (public since 2026-11-24).
 
 ## Hardware
 

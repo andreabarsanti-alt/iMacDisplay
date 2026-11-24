@@ -27,6 +27,8 @@ final class HostAppModel: ObservableObject {
     @Published var fps5K: Int { didSet { UserDefaults.standard.set(fps5K, forKey: "fps5K") } }
     @Published private(set) var displaysLine = ""
     @Published private(set) var lastStopLine = ""
+    @Published private(set) var update: UpdateCheck.Update?
+    @Published private(set) var versionProblem = ""
 
     private(set) var session: HostSession?
     private var timer: Timer?
@@ -50,6 +52,7 @@ final class HostAppModel: ObservableObject {
         }
         observeSystem()
         registerHotKey()
+        UpdateCheck.check { [weak self] u in self?.update = u }
     }
 
     var icon: String {
@@ -92,6 +95,10 @@ final class HostAppModel: ObservableObject {
             }
         } }
         s.onEscapeHatch = { [weak self] in Task { @MainActor in self?.stop(reason: "escape hatch on the iMac") } }
+        s.onVersionMismatch = { [weak self] v in Task { @MainActor in
+            self?.versionProblem = "The iMac app is a different version (protocol \(v), here \(WireProtocol.version)): update both Macs"
+        } }
+        versionProblem = ""
         session = s
         Task { @MainActor in try? await s.start() }
     }
@@ -149,6 +156,7 @@ final class HostAppModel: ObservableObject {
     func requestPermissions() { HostPermissions.request() }
 
     func openLog() { NSWorkspace.shared.open(FileLog.url("MacBook")) }
+    func openUpdate() { NSWorkspace.shared.open(update?.page ?? UpdateCheck.releasesPage) }
 
     // MARK: Automatic stop
 

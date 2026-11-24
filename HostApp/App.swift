@@ -46,11 +46,16 @@ struct MenuContent: View {
     @ObservedObject var model: HostAppModel
 
     var body: some View {
+        if let u = model.update {
+            Button("Update available: \(u.version) — Download…") { model.openUpdate() }
+            Divider()
+        }
         Button(model.state.isActive ? "Stop Sharing" : "Start Sharing") { model.toggle() }
             .keyboardShortcut("s")
             .disabled(model.state == .stopping)
         Text(model.state.label)
         if !model.statsLine.isEmpty { Text(model.statsLine) }
+        if !model.versionProblem.isEmpty { Text(model.versionProblem) }
         if !model.state.isActive && !model.lastStopLine.isEmpty { Text(model.lastStopLine) }
         Divider()
         Toggle("Allow keyboard & mouse control", isOn: $model.allowControl)

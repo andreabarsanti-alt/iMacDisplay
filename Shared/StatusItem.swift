@@ -72,9 +72,21 @@ public final class StatusItem {
         toggleAnchor += 1
     }
 
+    /// Adds a plain menu item at the top (e.g. "Update available…").
+    public func addAction(_ title: String, handler: @escaping () -> Void) {
+        let item = NSMenuItem(title: title, action: #selector(Target.action(_:)), keyEquivalent: "")
+        item.target = target
+        target.actions[ObjectIdentifier(item)] = handler
+        self.item.menu?.insertItem(item, at: 0)
+        self.item.menu?.insertItem(.separator(), at: 1)
+        toggleAnchor += 2
+    }
+
     private let target = Target()
     private final class Target: NSObject {
         var onQuit: (() -> Void)?
+        var actions: [ObjectIdentifier: () -> Void] = [:]
+        @objc func action(_ sender: NSMenuItem) { actions[ObjectIdentifier(sender)]?() }
         var toggles: [ObjectIdentifier: (Bool) -> Void] = [:]
         @objc func quit() { onQuit?() }
         @objc func toggle(_ sender: NSMenuItem) {

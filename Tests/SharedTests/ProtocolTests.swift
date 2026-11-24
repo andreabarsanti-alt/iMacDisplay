@@ -153,3 +153,21 @@ private func bytes(_ hex: String) -> Data {
     @Test func smallSlowSwipeIsIgnored() { #expect(GestureRules.dockAction(progress: 0.1, velocity: 0.3) == nil) }
     @Test func shortFlickUsesVelocity() { #expect(GestureRules.dockAction(progress: 0.12, velocity: -2) == .previousSpace) }
 }
+
+@Suite struct UpdateCheckTests {
+    @Test func newer() {
+        #expect(UpdateCheck.isNewer("v1.2", than: "v1.1"))
+        #expect(UpdateCheck.isNewer("v1.1.1", than: "v1.1"))
+        #expect(UpdateCheck.isNewer("v2.0", than: "v1.9.9"))
+    }
+    @Test func notNewer() {
+        #expect(!UpdateCheck.isNewer("v1.1", than: "v1.1"))
+        #expect(!UpdateCheck.isNewer("v1.0.1", than: "v1.1"))
+        #expect(!UpdateCheck.isNewer("v1.1", than: "v1.1-4-gabc123"))   // dev build past v1.1
+        #expect(UpdateCheck.isNewer("v1.2", than: "v1.1-4-gabc123"))
+    }
+    @Test func unparsable() {
+        #expect(!UpdateCheck.isNewer("v1.2", than: "dev"))               // unknown local build: no nagging
+        #expect(!UpdateCheck.isNewer("m13", than: "v1.1"))
+    }
+}

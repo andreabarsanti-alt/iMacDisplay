@@ -31,6 +31,7 @@ All pass except link speed:
 
 ## Last test results
 
+- **v1.2 (2026-11-24):** Magic Mouse gestures verified live by the human ("it worked"; 149 companion gesture events forwarded, 6 two-finger swipes caught). Update check at startup (GitHub releases API; repo made public after rewriting history to the GitHub no-reply address — no old addresses left, backup mirror kept in the scratchpad). Protocol v2: version mismatch reported clearly on both sides (tested against installed v1 iMac app and a v1.1 MacBook build). Full regression M3-M13 + feedback tests pass.
 - **Magic Mouse swipes (2026-11-24, autonomous):**
   - Root cause A (fixed, proven): an invisible `loginwindow` window (level 996, 347x313, centre of the iMac screen, present since boot; probably a leftover lock-screen panel) sat above the mirror window (level 25) and swallowed clicks, scrolls and swipes in the middle of the screen (centre 0/1 clicks, 0/5 scrolls; off-centre 1/1, 5/5). Mirror window now at screen-saver level (1000): centre 1/1, 5/5. The real lock screen (shielding level) still covers it.
   - Root cause B (fixed, proven): scroll gesture phases and momentum phases were not forwarded, so swipes arrived as plain scrolls. Now packed into InputEvent.code (ScrollCode, backward compatible) and set on injected events. `scripts/fb-swipe-test.sh`: began/changed/ended + momentum reach the MacBook; control RM_NO_SCROLL_PHASES=1 fails.

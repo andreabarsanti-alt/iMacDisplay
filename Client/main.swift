@@ -230,6 +230,9 @@ func startSession() {
         }
     } }
     client.onReconnecting = { _ in awaitingFirstFrame = true; status.set(.reconnecting) }
+    client.onVersionMismatch = { v in DispatchQueue.main.async {
+        showNote("0version", "The MacBook runs a different RemoteMirror version (protocol \(v), here \(WireProtocol.version)): update both Macs.")
+    } }
     client.onCursor = { x, y, v in DispatchQueue.main.async { display.hostCursor(x, y, visible: v) } }
     client.onCursorShape = { c in DispatchQueue.main.async { display.setCursorShape(c) } }
     inputClient?.onReady = { runTestScripts() }
@@ -246,6 +249,18 @@ display.inputView.onAction = sendAction
 tap.onAction = sendAction
 var gesturesSent = 0
 tap.onGesture = { g in gesturesSent += 1; inputClient?.send(.gesture(g)) }
+var idleNotes: [String: String] = [:]
+func showNote(_ key: String, _ text: String?) {
+    idleNotes[key] = text
+    idle.setNotes(idleNotes.keys.sorted().compactMap { idleNotes[$0] })
+}
+if waitingMode {
+    UpdateCheck.check { u in
+        guard let u else { return }
+        showNote("1update", "Update available: RemoteMirror \(u.version) (menu bar > Update available…)")
+        status.addAction("Update available: \(u.version) — Download…") { NSWorkspace.shared.open(u.page) }
+    }
+}
 status.addToggle("Swipe = Back/Forward shortcut (fallback)", isOn: InputView.pageSwipes) { on in
     InputView.pageSwipes = on
     UserDefaults.standard.set(on, forKey: "pageSwipes")

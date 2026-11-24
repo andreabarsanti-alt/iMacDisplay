@@ -13,11 +13,19 @@ macOS permissions you grant survive updates.
 
 ## Getting the packages
 
-From the GitHub release page of the (private) repo, logged in:
+From the GitHub release page (public, no login needed):
 `https://github.com/andreabarsanti-alt/iMacDisplay/releases` -> download
 `RemoteMirror-MacBook.zip` or `RemoteMirror-iMac.zip`, double-click to unzip, then
 in Terminal: `cd ~/Downloads/RemoteMirror-MacBook && ./install.sh` (or `RemoteMirror-iMac`).
 The installer removes the download quarantine flag from the app it installs.
+
+## Updates
+
+Both apps check GitHub for a newer release when they start. If there is one, the
+MacBook menu and the iMac's waiting window / menu show "Update available: vX —
+Download…". Nothing is installed automatically: download both zips and run
+`./install.sh --skip-network` on each Mac (keeps network, key and permissions).
+Update **both** Macs: if their versions don't match, they refuse to connect and say so.
 
 ## Order
 

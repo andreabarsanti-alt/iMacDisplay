@@ -18,6 +18,8 @@ final class VideoClient {
     var onFrame: ((VideoFrame) -> Void)?
     var onClosed: ((String) -> Void)?
     var onBye: ((ByeReason) -> Void)?
+    /// The MacBook speaks another protocol version (update needed).
+    var onVersionMismatch: ((UInt16) -> Void)?
     var onCursor: ((Float32, Float32, Bool) -> Void)?
     var onCursorShape: ((CursorShape) -> Void)?
 
@@ -66,6 +68,9 @@ final class VideoClient {
                     c.close("bad helloAck"); return
                 }
                 guard accepted, version == WireProtocol.version else {
+                    self.log("{\"event\":\"version_mismatch\",\"macbook_protocol\":\(version),\"imac_protocol\":\(WireProtocol.version)}")
+                    self.onVersionMismatch?(version)
+                    self.retryInterval = max(self.retryInterval, 10)   // don't hammer an incompatible MacBook
                     c.close("host rejected protocol v\(WireProtocol.version) (host v\(version))"); return
                 }
                 self.handshakeDone = true

@@ -29,8 +29,15 @@ final class IdleWindow {
         window.center()
     }
 
+    private var notes: [String] = []
+    private var lastSession: String?
+
+    /// Extra lines (update available, version problem) shown above the hints.
+    func setNotes(_ n: [String]) { notes = n; setDetail(lastSession) }
+
     func setDetail(_ lastSession: String?) {
-        var lines = ["MacBook at \(WireProtocol.hostAddress) over the Ethernet cable.",
+        self.lastSession = lastSession
+        var lines = notes + ["MacBook at \(WireProtocol.hostAddress) over the Ethernet cable.",
                      "Press Start Sharing in the MacBook's menu bar."]
         if let lastSession { lines.append("Last session ended: \(lastSession)") }
         lines.append("While mirroring: Ctrl-Option-Cmd-Z pause · Ctrl-Option-Cmd-Q end")

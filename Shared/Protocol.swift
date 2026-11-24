@@ -3,7 +3,8 @@ import Foundation
 /// Wire protocol shared by Host (MacBook, arm64) and Client (iMac, x86_64).
 /// All integers are little-endian; floats are IEEE-754 Float32 bit patterns.
 public enum WireProtocol {
-    public static let version: UInt16 = 1
+    /// 2: gesture companions, actions and scroll phases (v1.2). Peers must match.
+    public static let version: UInt16 = 2
     public static let magic: UInt32 = 0x5044_4D49   // "IMDP" in little-endian byte order
     public static let nonceLength = 16
 

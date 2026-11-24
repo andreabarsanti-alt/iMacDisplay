@@ -34,6 +34,8 @@ public final class VideoServer {
 
     public var onInput: ((InputEvent) -> Void)?
     public var onGesture: ((GestureEvent) -> Void)?
+    /// The iMac app speaks another protocol version (update needed).
+    public var onVersionMismatch: ((UInt16) -> Void)?
 
     public init(config: Config) {
         self.config = config
@@ -151,7 +153,11 @@ public final class VideoServer {
                 }
                 let ok = version == WireProtocol.version
                 c.send(.helloAck(version: WireProtocol.version, nonce: nonce, accepted: ok))
-                guard ok else { c.sayGoodbye(.protocolError); return }
+                guard ok else {
+                    self.log("{\"event\":\"version_mismatch\",\"imac_protocol\":\(version),\"macbook_protocol\":\(WireProtocol.version)}")
+                    self.onVersionMismatch?(version)
+                    c.sayGoodbye(.protocolError); return
+                }
                 handshakeDone = true
                 c.startHeartbeat()
                 self.streaming = true

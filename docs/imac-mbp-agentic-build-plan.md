@@ -225,4 +225,4 @@ Remote input injection can lock you out of the MacBook if something goes wrong. 
 - SSH user on iMac: `________`
 - macOS versions (iMac / MacBook): `________ / ________`
 - Xcode / Swift versions (iMac / MacBook): `________ / ________`
-- Repo location / remote: `github.com/andreabarsanti-alt/iMacDisplay` (private)
+- Repo location / remote: `github.com/andreabarsanti-alt/iMacDisplay` (public since 2026-11-24)
